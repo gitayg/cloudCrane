@@ -1,0 +1,202 @@
+import { Router } from 'express';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { join, resolve } from 'path';
+import { getDb } from '../db.js';
+import { requireAuth, requireAdmin } from '../middleware/auth.js';
+import { auditMiddleware } from '../middleware/audit.js';
+import { AppError } from '../utils/errors.js';
+import log from '../utils/logger.js';
+
+const router = Router();
+
+router.use(requireAuth);
+
+const AUTO_STATUSES = [
+  'new', 'selected', 'planning', 'pending_user_review_plan',
+  'plan_approved', 'coding', 'sandbox_ready', 'merged',
+  'auto_failed', 'in_progress', 'done',
+];
+
+// ── Enhancement requests (extends existing) ─────────────────────────────
+
+/**
+ * POST /api/appstudio/:id/plan - Trigger AI plan generation for an enhancement
+ */
+router.post('/:id/plan', requireAdmin, auditMiddleware('appstudio.plan'), (req, res) => {
+  const db = getDb();
+  const enh = db.prepare('SELECT * FROM enhancement_requests WHERE id = ?').get(req.params.id);
+  if (!enh) throw new AppError('Enhancement not found', 404, 'NOT_FOUND');
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new AppError('ANTHROPIC_API_KEY not configured. Add it to .env and restart.', 503, 'NOT_CONFIGURED');
+  }
+
+  db.prepare("UPDATE enhancement_requests SET mode = 'auto', status = 'planning' WHERE id = ?")
+    .run(enh.id);
+  db.prepare('INSERT INTO enhancement_jobs (enhancement_id, phase) VALUES (?, ?)').run(enh.id, 'plan');
+
+  res.json({ message: 'Plan queued', enhancement_id: enh.id });
+});
+
+/**
+ * POST /api/appstudio/:id/approve-plan - Approve the AI plan → trigger code generation
+ */
+router.post('/:id/approve-plan', requireAdmin, auditMiddleware('appstudio.approve-plan'), (req, res) => {
+  const db = getDb();
+  const enh = db.prepare('SELECT * FROM enhancement_requests WHERE id = ?').get(req.params.id);
+  if (!enh) throw new AppError('Enhancement not found', 404, 'NOT_FOUND');
+  if (!enh.ai_plan_json) throw new AppError('No plan to approve', 400, 'NO_PLAN');
+
+  db.prepare("UPDATE enhancement_requests SET status = 'plan_approved' WHERE id = ?").run(enh.id);
+  db.prepare('INSERT INTO enhancement_jobs (enhancement_id, phase) VALUES (?, ?)').run(enh.id, 'code');
+
+  res.json({ message: 'Plan approved, code generation queued', enhancement_id: enh.id });
+});
+
+/**
+ * POST /api/appstudio/:id/plan-feedback - Send revision feedback → re-plan
+ */
+router.post('/:id/plan-feedback', auditMiddleware('appstudio.plan-feedback'), (req, res) => {
+  const { comment } = req.body;
+  if (!comment?.trim()) throw new AppError('Comment is required', 400, 'VALIDATION');
+
+  const db = getDb();
+  const enh = db.prepare('SELECT * FROM enhancement_requests WHERE id = ?').get(req.params.id);
+  if (!enh) throw new AppError('Enhancement not found', 404, 'NOT_FOUND');
+
+  const isAdmin = req.user?.role === 'admin';
+  const field = isAdmin ? 'admin_comments' : 'user_comments';
+  const existing = enh[field] || '';
+  const updated = existing + `\n[${new Date().toISOString()}] ${comment.trim()}`;
+
+  db.prepare(`UPDATE enhancement_requests SET ${field} = ?, status = 'planning' WHERE id = ?`)
+    .run(updated, enh.id);
+  db.prepare('INSERT INTO enhancement_jobs (enhancement_id, phase) VALUES (?, ?)').run(enh.id, 'revise_plan');
+
+  res.json({ message: 'Feedback saved, re-planning queued' });
+});
+
+/**
+ * POST /api/appstudio/:id/approve-sandbox - Approve sandbox → open PR + promote
+ */
+router.post('/:id/approve-sandbox', requireAdmin, auditMiddleware('appstudio.approve-sandbox'), (req, res) => {
+  const db = getDb();
+  const enh = db.prepare('SELECT * FROM enhancement_requests WHERE id = ?').get(req.params.id);
+  if (!enh) throw new AppError('Enhancement not found', 404, 'NOT_FOUND');
+  if (!enh.branch_name) throw new AppError('No branch to open PR from', 400, 'NO_BRANCH');
+
+  db.prepare('INSERT INTO enhancement_jobs (enhancement_id, phase) VALUES (?, ?)').run(enh.id, 'open_pr');
+
+  res.json({ message: 'PR creation queued' });
+});
+
+/**
+ * POST /api/appstudio/:id/reject - Reject enhancement (stop all processing)
+ */
+router.post('/:id/reject', requireAdmin, auditMiddleware('appstudio.reject'), (req, res) => {
+  const db = getDb();
+  const enh = db.prepare('SELECT * FROM enhancement_requests WHERE id = ?').get(req.params.id);
+  if (!enh) throw new AppError('Enhancement not found', 404, 'NOT_FOUND');
+
+  db.prepare("UPDATE enhancement_requests SET status = 'done', ai_log = COALESCE(ai_log, '') || ? WHERE id = ?")
+    .run(`\n[${new Date().toISOString()}] Rejected by ${req.user.name}\n`, enh.id);
+  db.prepare("UPDATE enhancement_jobs SET status = 'failed', error_message = 'rejected' WHERE enhancement_id = ? AND status IN ('queued', 'running')")
+    .run(enh.id);
+
+  res.json({ message: 'Enhancement rejected' });
+});
+
+/**
+ * GET /api/appstudio/:id - Full enhancement detail with plan + jobs
+ */
+router.get('/:id', (req, res) => {
+  const db = getDb();
+  const enh = db.prepare('SELECT * FROM enhancement_requests WHERE id = ?').get(req.params.id);
+  if (!enh) throw new AppError('Enhancement not found', 404, 'NOT_FOUND');
+
+  const jobs = db.prepare('SELECT * FROM enhancement_jobs WHERE enhancement_id = ? ORDER BY id ASC').all(enh.id);
+
+  let plan = null;
+  if (enh.ai_plan_json) {
+    try { plan = JSON.parse(enh.ai_plan_json); } catch (_) {}
+  }
+
+  res.json({
+    enhancement: {
+      ...enh,
+      ai_plan: plan,
+    },
+    jobs,
+  });
+});
+
+/**
+ * GET /api/appstudio/jobs - All active/recent jobs
+ */
+router.get('/jobs/list', requireAdmin, (req, res) => {
+  const db = getDb();
+  const jobs = db.prepare(`
+    SELECT j.*, er.message as enhancement_message, er.app_slug
+    FROM enhancement_jobs j
+    JOIN enhancement_requests er ON er.id = j.enhancement_id
+    ORDER BY j.id DESC LIMIT 50
+  `).all();
+  res.json({ jobs });
+});
+
+// ── Agent context per app ───────────────────────────────────────────────
+
+function agentContextPath(slug) {
+  return join(resolve(process.env.DATA_DIR || './data'), 'apps', slug, 'agent-context.md');
+}
+
+/**
+ * GET /api/appstudio/context/:slug - Read agent context for an app
+ */
+router.get('/context/:slug', (req, res) => {
+  const path = agentContextPath(req.params.slug);
+  const content = existsSync(path) ? readFileSync(path, 'utf8') : '';
+  res.json({ slug: req.params.slug, content });
+});
+
+/**
+ * PUT /api/appstudio/context/:slug - Write agent context for an app
+ */
+router.put('/context/:slug', requireAdmin, auditMiddleware('appstudio.agent-context'), (req, res) => {
+  const { content } = req.body;
+  if (content == null) throw new AppError('content is required', 400, 'VALIDATION');
+
+  const path = agentContextPath(req.params.slug);
+  mkdirSync(join(path, '..'), { recursive: true });
+  writeFileSync(path, content, 'utf8');
+
+  res.json({ slug: req.params.slug, message: 'Agent context saved' });
+});
+
+// ── Usage / cost summary ────────────────────────────────────────────────
+
+/**
+ * GET /api/appstudio/usage - Monthly cost summary
+ */
+router.get('/usage/summary', requireAdmin, (req, res) => {
+  const db = getDb();
+  const month = new Date().toISOString().slice(0, 7);
+  const stats = db.prepare(`
+    SELECT
+      COUNT(*) as total_jobs,
+      SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) as succeeded,
+      SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
+      SUM(COALESCE(cost_tokens, 0)) as total_tokens,
+      SUM(COALESCE(cost_usd_cents, 0)) as total_cents
+    FROM enhancement_jobs
+    WHERE created_at >= ?
+  `).get(`${month}-01`);
+
+  res.json({
+    month,
+    ...stats,
+    total_usd: ((stats?.total_cents || 0) / 100).toFixed(2),
+  });
+});
+
+export default router;

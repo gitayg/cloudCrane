@@ -45,6 +45,7 @@ import uploadRoutes from './routes/upload.js';
 import identityRoutes from './routes/identity.js';
 import settingsRoutes from './routes/settings.js';
 import enhancementsRoutes from './routes/enhancements.js';
+import appstudioRoutes from './routes/appstudio.js';
 import oidcRoutes from './routes/oidc.js';
 import samlRoutes from './routes/saml.js';
 import scimRoutes, { scimAdminRouter } from './routes/scim.js';
@@ -426,6 +427,7 @@ app.use('/api/apps', notificationsRoutes); // /api/apps/:slug/notifications
 // Mount identity FIRST so its routes don't get caught by other middleware
 app.use('/api/identity', identityRoutes);
 app.use('/api/enhancements', enhancementsRoutes); // Enhancement requests (Bearer auth, must be before logsRoutes)
+app.use('/api/appstudio', appstudioRoutes); // AppStudio plan/code/build pipeline
 app.use('/api/webhooks', webhooksRoutes); // Public webhook endpoint (no auth — must be before logsRoutes)
 
 app.use('/api', logsRoutes);             // /api/audit, /api/apps/:slug/audit
@@ -444,6 +446,7 @@ app.get('/applications', (req, res) => res.sendFile(join(__dirname, '..', 'docs'
 app.get('/users-page', (req, res) => res.sendFile(join(__dirname, '..', 'docs', 'users-page.html')));
 app.get('/audit-page', (req, res) => res.sendFile(join(__dirname, '..', 'docs', 'audit-page.html')));
 app.get('/enhancements-page', (req, res) => res.sendFile(join(__dirname, '..', 'docs', 'enhancements-page.html')));
+app.get('/appstudio', (req, res) => res.sendFile(join(__dirname, '..', 'docs', 'appstudio.html')));
 app.get('/settings', (req, res) => res.sendFile(join(__dirname, '..', 'docs', 'settings.html')));
 
 // App manager (app user)
@@ -579,6 +582,11 @@ app.listen(PORT, HOST, async () => {
   try {
     const { startHealthChecker } = await import('./services/healthChecker.js');
     startHealthChecker();
+
+    if (process.env.ANTHROPIC_API_KEY) {
+      const { startWorker } = await import('./services/appstudio/worker.js');
+      startWorker();
+    }
   } catch (e) {
     log.warn('Health checker startup deferred');
   }

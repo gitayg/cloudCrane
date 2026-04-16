@@ -103,6 +103,7 @@ function topbar(active) {
     {id:'users',label:'Users',href:'/users-page'},
     {id:'audit',label:'Audit Log',href:'/audit-page'},
     {id:'enhancements',label:'Enhancements',href:'/enhancements-page'},
+    {id:'appstudio',label:'AppStudio',href:'/appstudio'},
     {id:'settings',label:'Settings',href:'/settings'},
   ];
   const nav = pages.map(p => '<a href="' + p.href + '" class="' + (active === p.id ? 'active' : '') + '">' + p.label + '</a>').join('');

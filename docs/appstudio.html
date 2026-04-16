@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>AppCrane - AppStudio</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/docs/shared.css">
+<style>
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:16px}
+.tab{padding:10px 20px;color:var(--dim);cursor:pointer;border-bottom:2px solid transparent;font-size:.9rem;font-weight:500}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.enh-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px;cursor:pointer;transition:border-color .15s}
+.enh-card:hover{border-color:var(--accent)}
+.enh-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.enh-msg{font-size:.9rem;line-height:1.4;margin-bottom:6px}
+.enh-meta{font-size:.75rem;color:var(--dim);display:flex;gap:12px;flex-wrap:wrap}
+.enh-status{display:inline-block;font-size:.7rem;padding:2px 8px;border-radius:4px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.s-new{background:#3b82f622;color:#3b82f6}.s-planning,.s-selected{background:#8b5cf622;color:#8b5cf6}
+.s-pending_user_review_plan{background:#f59e0b22;color:#f59e0b}.s-plan_approved,.s-coding{background:#06b6d422;color:#06b6d4}
+.s-sandbox_ready{background:#22c55e22;color:#22c55e}.s-merged,.s-done{background:#22c55e22;color:#22c55e}
+.s-auto_failed{background:#ef444422;color:#ef4444}.s-in_progress{background:#f59e0b22;color:#f59e0b}
+.detail-panel{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px}
+.plan-files{list-style:none;padding:0;margin:8px 0}
+.plan-files li{padding:4px 0;border-bottom:1px solid var(--border);font-size:.82rem}
+.plan-files li:last-child{border-bottom:none}
+.actions-bar{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.cost-badge{font-size:.75rem;color:var(--dim);background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px}
+.context-editor{width:100%;min-height:200px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;color:var(--text);font-family:monospace;font-size:.82rem;resize:vertical}
+.job-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:.82rem}
+.job-row:last-child{border-bottom:none}
+.usage-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px}
+</style>
+</head>
+<body>
+<script src="/docs/shared.js"></script>
+<script>
+if (!checkAuth()) throw 'auth';
+document.body.insertAdjacentHTML('beforeend', topbar('appstudio') +
+  '<div class="container">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
+      '<h2 style="margin:0">AppStudio</h2>' +
+      '<span style="color:var(--dim);font-size:.8rem">AI-powered enhancement pipeline</span>' +
+    '</div>' +
+    '<div class="tabs">' +
+      '<div class="tab active" data-tab="requests">Requests</div>' +
+      '<div class="tab" data-tab="jobs">Jobs</div>' +
+      '<div class="tab" data-tab="library">Library</div>' +
+      '<div class="tab" data-tab="usage">Usage</div>' +
+    '</div>' +
+    '<div id="tabContent"></div>' +
+  '</div>');
+loadVersion(); loadUserInfo();
+
+let activeTab = 'requests';
+let allEnhancements = [];
+let allApps = [];
+
+document.querySelectorAll('.tab').forEach(function(t) {
+  t.addEventListener('click', function() {
+    document.querySelectorAll('.tab').forEach(function(x){ x.classList.remove('active'); });
+    t.classList.add('active');
+    activeTab = t.dataset.tab;
+    renderTab();
+  });
+});
+
+async function loadData() {
+  const [enhData, appData] = await Promise.all([
+    apiFetch('/api/enhancements'),
+    apiFetch('/api/apps'),
+  ]);
+  allEnhancements = (enhData.requests || []).sort(function(a, b) { return b.id - a.id; });
+  allApps = appData.apps || [];
+  renderTab();
+}
+
+function renderTab() {
+  var el = document.getElementById('tabContent');
+  el.textContent = '';
+  switch (activeTab) {
+    case 'requests': renderRequests(el); break;
+    case 'jobs': renderJobs(el); break;
+    case 'library': renderLibrary(el); break;
+    case 'usage': renderUsage(el); break;
+  }
+}
+
+function statusLabel(s) {
+  var labels = {
+    new: 'New', selected: 'Selected', planning: 'Planning...',
+    pending_user_review_plan: 'Plan ready', plan_approved: 'Approved',
+    coding: 'Coding...', sandbox_ready: 'Sandbox ready',
+    merged: 'Shipped', done: 'Done', auto_failed: 'Failed',
+    in_progress: 'In Progress',
+  };
+  return labels[s] || s;
+}
+
+function renderRequests(el) {
+  if (!allEnhancements.length) {
+    var dim = document.createElement('div');
+    dim.style.color = 'var(--dim)';
+    dim.textContent = 'No enhancement requests yet.';
+    el.appendChild(dim);
+    return;
+  }
+  for (var i = 0; i < allEnhancements.length; i++) {
+    var e = allEnhancements[i];
+    var card = document.createElement('div');
+    card.className = 'enh-card';
+    card.dataset.id = e.id;
+    card.addEventListener('click', function() { showDetail(parseInt(this.dataset.id)); });
+
+    var header = document.createElement('div');
+    header.className = 'enh-header';
+    var msg = document.createElement('div');
+    msg.className = 'enh-msg';
+    msg.textContent = e.message.length > 120 ? e.message.slice(0, 120) + '...' : e.message;
+    var badge = document.createElement('span');
+    badge.className = 'enh-status s-' + (e.status || 'new');
+    badge.textContent = statusLabel(e.status);
+    header.appendChild(msg);
+    header.appendChild(badge);
+
+    var meta = document.createElement('div');
+    meta.className = 'enh-meta';
+    if (e.app_slug) { var s1 = document.createElement('span'); s1.textContent = e.app_slug; meta.appendChild(s1); }
+    if (e.user_name) { var s2 = document.createElement('span'); s2.textContent = e.user_name; meta.appendChild(s2); }
+    var s3 = document.createElement('span'); s3.textContent = (e.created_at || '').slice(0, 16); meta.appendChild(s3);
+    if (e.mode === 'auto') { var s4 = document.createElement('span'); s4.textContent = 'AI'; s4.style.color = 'var(--accent)'; meta.appendChild(s4); }
+    if (e.cost_usd_cents > 0) { var s5 = document.createElement('span'); s5.className = 'cost-badge'; s5.textContent = '$' + (e.cost_usd_cents / 100).toFixed(2); meta.appendChild(s5); }
+
+    card.appendChild(header);
+    card.appendChild(meta);
+    el.appendChild(card);
+  }
+}
+
+async function showDetail(id) {
+  var el = document.getElementById('tabContent');
+  el.textContent = 'Loading...';
+  var data = await apiFetch('/api/appstudio/' + id);
+  var e = data.enhancement;
+  var jobs = data.jobs || [];
+
+  el.textContent = '';
+  var panel = document.createElement('div');
+  panel.className = 'detail-panel';
+
+  var back = document.createElement('button');
+  back.className = 'btn'; back.style.cssText = 'font-size:.8rem;margin-bottom:12px';
+  back.textContent = 'Back to list';
+  back.addEventListener('click', function() { renderTab(); });
+  panel.appendChild(back);
+
+  var title = document.createElement('h3');
+  title.style.margin = '0 0 4px';
+  title.textContent = e.message.slice(0, 100);
+  panel.appendChild(title);
+
+  var metaDiv = document.createElement('div');
+  metaDiv.style.cssText = 'font-size:.8rem;color:var(--dim);margin-bottom:12px';
+  metaDiv.textContent = [e.app_slug, e.user_name, (e.created_at || '').slice(0, 16)].filter(Boolean).join(' · ');
+  var statusBadge = document.createElement('span');
+  statusBadge.className = 'enh-status s-' + (e.status || 'new');
+  statusBadge.style.marginLeft = '8px';
+  statusBadge.textContent = statusLabel(e.status);
+  metaDiv.appendChild(statusBadge);
+  panel.appendChild(metaDiv);
+
+  var msgBox = document.createElement('div');
+  msgBox.style.cssText = 'margin-bottom:16px;line-height:1.5';
+  msgBox.textContent = e.message;
+  panel.appendChild(msgBox);
+
+  if (e.ai_plan) {
+    var planHeading = document.createElement('h4');
+    planHeading.textContent = 'AI Plan';
+    planHeading.style.margin = '16px 0 8px';
+    panel.appendChild(planHeading);
+
+    if (e.ai_plan.summary) {
+      var summary = document.createElement('div');
+      summary.style.cssText = 'margin-bottom:8px;font-size:.9rem';
+      summary.textContent = e.ai_plan.summary;
+      panel.appendChild(summary);
+    }
+
+    if (e.ai_plan.files_to_change) {
+      var fileList = document.createElement('ul');
+      fileList.className = 'plan-files';
+      for (var fi = 0; fi < e.ai_plan.files_to_change.length; fi++) {
+        var f = e.ai_plan.files_to_change[fi];
+        var li = document.createElement('li');
+        var code = document.createElement('code'); code.textContent = f.path; li.appendChild(code);
+        var action = document.createElement('span');
+        action.style.cssText = 'margin-left:8px;color:var(--dim)';
+        action.textContent = '(' + f.action + ', ~' + f.estimated_loc + ' LOC) ' + (f.rationale || '');
+        li.appendChild(action);
+        fileList.appendChild(li);
+      }
+      panel.appendChild(fileList);
+    }
+
+    if (e.ai_plan.risks && e.ai_plan.risks.length) {
+      var risksDiv = document.createElement('div');
+      risksDiv.style.cssText = 'margin:8px 0;padding:8px 12px;background:#ef444412;border:1px solid #ef444433;border-radius:6px;font-size:.82rem';
+      risksDiv.textContent = 'Risks: ' + e.ai_plan.risks.join('; ');
+      panel.appendChild(risksDiv);
+    }
+
+    if (e.ai_plan.test_plan) {
+      var testDiv = document.createElement('div');
+      testDiv.style.cssText = 'margin:8px 0;font-size:.82rem;color:var(--dim)';
+      testDiv.textContent = 'Test plan: ' + e.ai_plan.test_plan;
+      panel.appendChild(testDiv);
+    }
+  }
+
+  if (e.cost_usd_cents > 0) {
+    var cost = document.createElement('div');
+    cost.className = 'cost-badge'; cost.style.margin = '12px 0';
+    cost.textContent = 'Total cost: $' + (e.cost_usd_cents / 100).toFixed(2) + ' (' + (e.cost_tokens || 0).toLocaleString() + ' tokens)';
+    panel.appendChild(cost);
+  }
+
+  if (e.pr_url) {
+    var prLink = document.createElement('a');
+    prLink.href = e.pr_url; prLink.target = '_blank'; prLink.className = 'btn';
+    prLink.style.cssText = 'display:inline-block;margin:8px 0';
+    prLink.textContent = 'View Pull Request';
+    panel.appendChild(prLink);
+  }
+
+  var actions = document.createElement('div');
+  actions.className = 'actions-bar';
+
+  if (e.status === 'new' || e.status === 'selected') {
+    var planBtn = document.createElement('button');
+    planBtn.className = 'btn btn-accent'; planBtn.textContent = 'Plan with AI';
+    planBtn.dataset.id = e.id;
+    planBtn.addEventListener('click', async function() {
+      this.disabled = true; this.textContent = 'Queuing...';
+      await apiPost('/api/appstudio/' + this.dataset.id + '/plan');
+      showDetail(parseInt(this.dataset.id));
+    });
+    actions.appendChild(planBtn);
+  }
+
+  if (e.status === 'pending_user_review_plan') {
+    var approveBtn = document.createElement('button');
+    approveBtn.className = 'btn btn-accent'; approveBtn.textContent = 'Approve plan + code it';
+    approveBtn.dataset.id = e.id;
+    approveBtn.addEventListener('click', async function() {
+      this.disabled = true;
+      await apiPost('/api/appstudio/' + this.dataset.id + '/approve-plan');
+      showDetail(parseInt(this.dataset.id));
+    });
+    actions.appendChild(approveBtn);
+
+    var feedbackBtn = document.createElement('button');
+    feedbackBtn.className = 'btn'; feedbackBtn.textContent = 'Request changes';
+    feedbackBtn.dataset.id = e.id;
+    feedbackBtn.addEventListener('click', async function() {
+      var comment = prompt('What should change in the plan?');
+      if (!comment) return;
+      await apiPost('/api/appstudio/' + this.dataset.id + '/plan-feedback', { comment: comment });
+      showDetail(parseInt(this.dataset.id));
+    });
+    actions.appendChild(feedbackBtn);
+  }
+
+  if (e.status === 'sandbox_ready') {
+    var shipBtn = document.createElement('button');
+    shipBtn.className = 'btn btn-accent'; shipBtn.textContent = 'Ship it (open PR + promote)';
+    shipBtn.dataset.id = e.id;
+    shipBtn.addEventListener('click', async function() {
+      this.disabled = true;
+      await apiPost('/api/appstudio/' + this.dataset.id + '/approve-sandbox');
+      showDetail(parseInt(this.dataset.id));
+    });
+    actions.appendChild(shipBtn);
+  }
+
+  if (['done', 'merged', 'auto_failed'].indexOf(e.status) === -1) {
+    var rejectBtn = document.createElement('button');
+    rejectBtn.className = 'btn btn-red'; rejectBtn.textContent = 'Reject';
+    rejectBtn.dataset.id = e.id;
+    rejectBtn.addEventListener('click', async function() {
+      if (!confirm('Reject this enhancement?')) return;
+      await apiPost('/api/appstudio/' + this.dataset.id + '/reject');
+      showDetail(parseInt(this.dataset.id));
+    });
+    actions.appendChild(rejectBtn);
+  }
+
+  panel.appendChild(actions);
+
+  if (jobs.length) {
+    var jobsHeading = document.createElement('h4');
+    jobsHeading.textContent = 'Jobs'; jobsHeading.style.margin = '20px 0 8px';
+    panel.appendChild(jobsHeading);
+    for (var ji = 0; ji < jobs.length; ji++) {
+      var j = jobs[ji];
+      var row = document.createElement('div'); row.className = 'job-row';
+      var left = document.createElement('span');
+      left.textContent = '#' + j.id + ' ' + j.phase + ' (' + j.status + ')';
+      var right = document.createElement('span'); right.style.color = 'var(--dim)';
+      right.textContent = (j.started_at || j.created_at || '').slice(0, 19);
+      if (j.error_message) { right.textContent += ' — ' + j.error_message.slice(0, 80); right.style.color = 'var(--red)'; }
+      row.appendChild(left); row.appendChild(right);
+      panel.appendChild(row);
+    }
+  }
+
+  el.appendChild(panel);
+}
+
+async function renderJobs(el) {
+  el.textContent = 'Loading...';
+  var data = await apiFetch('/api/appstudio/jobs/list');
+  el.textContent = '';
+  if (!data.jobs || !data.jobs.length) {
+    var dim = document.createElement('div');
+    dim.style.color = 'var(--dim)'; dim.textContent = 'No jobs yet.';
+    el.appendChild(dim); return;
+  }
+  for (var i = 0; i < data.jobs.length; i++) {
+    var j = data.jobs[i];
+    var card = document.createElement('div');
+    card.className = 'enh-card'; card.style.cursor = 'default';
+    var top = document.createElement('div'); top.className = 'enh-header';
+    var lbl = document.createElement('span');
+    lbl.textContent = '#' + j.id + ' ' + j.phase + ' — ' + (j.enhancement_message || '').slice(0, 60);
+    var badge = document.createElement('span');
+    badge.className = 'enh-status s-' + (j.status === 'done' ? 'done' : j.status === 'failed' ? 'auto_failed' : 'coding');
+    badge.textContent = j.status;
+    top.appendChild(lbl); top.appendChild(badge);
+    card.appendChild(top);
+    var meta = document.createElement('div'); meta.className = 'enh-meta';
+    if (j.app_slug) { var s1 = document.createElement('span'); s1.textContent = j.app_slug; meta.appendChild(s1); }
+    var s2 = document.createElement('span'); s2.textContent = (j.started_at || j.created_at || '').slice(0, 19); meta.appendChild(s2);
+    if (j.error_message) { var s3 = document.createElement('span'); s3.style.color = 'var(--red)'; s3.textContent = j.error_message.slice(0, 100); meta.appendChild(s3); }
+    card.appendChild(meta);
+    el.appendChild(card);
+  }
+}
+
+async function renderLibrary(el) {
+  el.textContent = '';
+  if (!allApps.length) { var dim = document.createElement('div'); dim.style.color = 'var(--dim)'; dim.textContent = 'No apps.'; el.appendChild(dim); return; }
+  var heading = document.createElement('p');
+  heading.style.cssText = 'color:var(--dim);font-size:.85rem;margin-bottom:12px';
+  heading.textContent = 'Per-app context notes for the AI agent. Saved as agent-context.md.';
+  el.appendChild(heading);
+  for (var i = 0; i < allApps.length; i++) {
+    var app = allApps[i];
+    var card = document.createElement('div');
+    card.className = 'detail-panel'; card.style.marginBottom = '12px';
+    var t = document.createElement('h4'); t.style.margin = '0 0 8px';
+    t.textContent = app.name + ' (' + app.slug + ')';
+    card.appendChild(t);
+    var ta = document.createElement('textarea');
+    ta.className = 'context-editor';
+    ta.placeholder = 'Agent context notes for ' + app.slug + '...';
+    ta.dataset.slug = app.slug;
+    card.appendChild(ta);
+    var saveBtn = document.createElement('button');
+    saveBtn.className = 'btn'; saveBtn.style.cssText = 'margin-top:8px;font-size:.8rem';
+    saveBtn.textContent = 'Save'; saveBtn.dataset.slug = app.slug;
+    saveBtn.addEventListener('click', async function() {
+      var slug = this.dataset.slug;
+      var textarea = document.querySelector('textarea[data-slug="' + slug + '"]');
+      this.disabled = true; this.textContent = 'Saving...';
+      var btn = this;
+      await apiPut('/api/appstudio/context/' + slug, { content: textarea.value });
+      btn.textContent = 'Saved'; setTimeout(function() { btn.textContent = 'Save'; btn.disabled = false; }, 1500);
+    });
+    card.appendChild(saveBtn);
+    el.appendChild(card);
+    (function(slug, textarea) {
+      apiFetch('/api/appstudio/context/' + slug).then(function(d) { textarea.value = d.content || ''; });
+    })(app.slug, ta);
+  }
+}
+
+async function renderUsage(el) {
+  el.textContent = 'Loading...';
+  var data = await apiFetch('/api/appstudio/usage/summary');
+  el.textContent = '';
+  var panel = document.createElement('div'); panel.className = 'detail-panel';
+  var h = document.createElement('h4'); h.style.margin = '0 0 12px'; h.textContent = 'Usage — ' + data.month;
+  panel.appendChild(h);
+  var grid = document.createElement('div'); grid.className = 'usage-grid';
+  var items = [
+    { label: 'Total jobs', value: data.total_jobs || 0 },
+    { label: 'Succeeded', value: data.succeeded || 0, color: 'var(--green)' },
+    { label: 'Failed', value: data.failed || 0, color: 'var(--red)' },
+    { label: 'Total tokens', value: (data.total_tokens || 0).toLocaleString() },
+    { label: 'Total cost', value: '$' + (data.total_usd || '0.00') },
+  ];
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i];
+    var stat = document.createElement('div'); stat.className = 'stat';
+    var lbl = document.createElement('div'); lbl.className = 'label'; lbl.textContent = it.label;
+    var val = document.createElement('div'); val.className = 'value'; val.textContent = it.value;
+    if (it.color) val.style.color = it.color;
+    stat.appendChild(lbl); stat.appendChild(val);
+    grid.appendChild(stat);
+  }
+  panel.appendChild(grid);
+  el.appendChild(panel);
+}
+
+loadData();
+</script>
+</body>
+</html>
