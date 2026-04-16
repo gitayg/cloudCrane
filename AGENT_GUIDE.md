@@ -339,13 +339,43 @@ SESSION_SECRET=random-string-here
 SMTP_HOST=smtp.example.com
 ```
 
+### Persistent data — must use `/data` (absolute), not a relative path
+
+AppCrane runs every app in an isolated Docker container. The image layers are
+immutable, so **anything your app writes to a path inside the image will
+disappear on the next restart**. There is exactly one writable, persistent
+location per env: the `/data` volume, which AppCrane bind-mounts from
+`data/apps/<slug>/<env>/shared/` on the host.
+
+**Rules for any app that writes state** (SQLite DBs, uploads, caches, session
+files, logs you want to keep):
+
+- Use the absolute path `/data` — **never** a relative path like `./db/app.db`
+  or `./uploads`. Relative paths resolve inside the read-only image layer and
+  either silently vanish on restart or hard-crash with `SQLITE_CANTOPEN`
+  / `ENOENT: unable to open file`.
+- AppCrane injects `DATA_DIR=/data` into every container. Prefer reading that
+  env var so local dev (where `DATA_DIR` might be `./data`) and prod work the
+  same way: `const dataDir = process.env.DATA_DIR || './data';`
+- Create subdirectories on startup (`fs.mkdirSync(dataDir, { recursive: true })`).
+- `/data` survives redeploys, rollbacks, and container recreation. It is
+  included in backups. Production and sandbox get separate `/data` volumes.
+
+```js
+// ✅ Works in Docker
+const dbPath = path.join(process.env.DATA_DIR || './data', 'app.db');
+
+// ❌ Breaks in Docker — path is inside the image, not writable, not persistent
+const dbPath = './db/app.db';
+const dbPath = path.join(__dirname, 'db', 'app.db');
+```
+
 ### Database
 
 - AppCrane does NOT provision databases. The app must bring its own.
-- Recommended: SQLite (simplest, file-based, stored in `/data/`) or external PostgreSQL
-- If using SQLite, store the DB file in a `data/` directory so it persists across deploys and is included in backups
-- Set the database path via env var: `DATABASE_URL=sqlite:./data/app.db`
-- The `/data/` directory is symlinked across deploys -- it survives rollbacks and redeploys
+- Recommended: SQLite (simplest, file-based, stored under `/data`) or external PostgreSQL
+- For SQLite: build the path from `process.env.DATA_DIR` (see rules above)
+- `DATABASE_URL=sqlite:/data/app.db` is a safe default the admin can override per env
 
 ### File structure expected by AppCrane
 
@@ -712,7 +742,8 @@ You have an API key. Here's the full flow to build and deploy an app:
 | Container restart-loops with `Cannot find package 'X'` | App is a monorepo (subdir `package.json`) but `be.workdir`/`fe.workdir` not set | Add `be.workdir` (and `fe.workdir` if applicable) to `deployhub.json` so AppCrane installs deps in the right directory |
 | Build succeeds but runtime fails on missing deps | Same as above — flat-layout install only ran at root | Add `be.workdir` pointing at the backend folder |
 | Env var missing | Not set for this environment | `PUT /api/apps/SLUG/env/ENV` with the missing var |
-| Database lost after deploy | DB file not in data/ directory | Move SQLite to `data/app.db`, update DATABASE_URL |
+| Database lost after deploy | DB file stored inside the image layer instead of `/data` | Move SQLite to `/data/app.db`; in code, use `process.env.DATA_DIR \|\| './data'` as the base path |
+| `SQLITE_CANTOPEN` / `unable to open database file` at runtime | Relative path resolves inside the read-only image | Switch to absolute `/data/...` path or `process.env.DATA_DIR` — never a relative or `__dirname`-based path |
 | Can't deploy (403) | Wrong API key or not assigned | Check with admin, use app user key not admin key |
 
 ## Identity Manager
