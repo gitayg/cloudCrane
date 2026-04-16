@@ -493,6 +493,12 @@ app.listen(PORT, HOST, async () => {
           final_version: VERSION,
         }, null, 2));
         log.info(`Self-update reconciled: ${info.previous_version} → ${VERSION} (success: ${success})`);
+        // Version actually changed → flag for container recreation downstream.
+        // Triggers a redeploy of every live app so policy changes (restart cap,
+        // env injections, Dockerfile template tweaks) propagate to existing apps.
+        if (success && info.previous_version && info.previous_version !== VERSION) {
+          global.__appcraneVersionChanged = { from: info.previous_version, to: VERSION };
+        }
       }
     }
   } catch (e) {
@@ -611,6 +617,49 @@ app.listen(PORT, HOST, async () => {
     }
   } catch (e) {
     log.warn('Auto-heal skipped: ' + e.message);
+  }
+
+  // Post-upgrade container recreation — if the AppCrane version just changed,
+  // queue a redeploy of every app whose latest deployment is 'live'. This
+  // ensures policy changes (e.g. --restart=on-failure cap) baked into the
+  // Dockerfile / docker run flags actually reach existing containers without
+  // requiring a manual redeploy of each app.
+  if (global.__appcraneVersionChanged) {
+    const { from, to } = global.__appcraneVersionChanged;
+    delete global.__appcraneVersionChanged;
+    try {
+      const liveApps = db.prepare(`
+        SELECT a.*, d.env AS deploy_env
+        FROM apps a
+        JOIN deployments d ON d.app_id = a.id
+        WHERE d.id = (
+          SELECT MAX(id) FROM deployments WHERE app_id = a.id AND env = d.env
+        )
+        AND d.status = 'live'
+      `).all();
+      if (liveApps.length > 0) {
+        const { deployApp } = await import('./services/deployer.js');
+        const { getPortsForSlot } = await import('./services/portAllocator.js');
+        log.info(`Post-upgrade ${from} → ${to}: recreating ${liveApps.length} container(s) under new policy`);
+        for (const row of liveApps) {
+          try {
+            const ports = getPortsForSlot(row.slot);
+            const r = db.prepare(`
+              INSERT INTO deployments (app_id, env, status, log)
+              VALUES (?, ?, 'pending', ?)
+            `).run(row.id, row.deploy_env, `post-upgrade recreate (${from} → ${to})`);
+            log.info(`  → ${row.slug}-${row.deploy_env} (deploy id ${r.lastInsertRowid})`);
+            deployApp(r.lastInsertRowid, row, row.deploy_env, ports).catch(err => {
+              log.error(`     ${row.slug}-${row.deploy_env} failed: ${err.message}`);
+            });
+          } catch (e) {
+            log.error(`  ${row.slug}-${row.deploy_env}: ${e.message}`);
+          }
+        }
+      }
+    } catch (e) {
+      log.warn('Post-upgrade recreate skipped: ' + e.message);
+    }
   }
 
   // Orphan check — warn if Docker containers are running but not tracked in the DB
