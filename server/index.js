@@ -461,8 +461,9 @@ app.get('/agent-guide', (req, res) => { res.type('text/markdown'); res.sendFile(
 // Friendly crash page. Caddy's handle_errors rewrites failed app proxy requests
 // to /api/_crashed<original-uri> so we can identify the app from the URL and
 // render a useful page instead of a blank upstream error.
-app.all('/api/_crashed/*', (req, res) => {
-  const rest = req.params[0] || '';
+app.all('/api/_crashed/*splat', (req, res) => {
+  const rawSplat = req.params.splat;
+  const rest = Array.isArray(rawSplat) ? rawSplat.join('/') : (rawSplat || '');
   const firstSeg = rest.split(/[/?#]/).filter(Boolean)[0] || '';
   const envSuffix = firstSeg.endsWith('-sandbox') ? 'sandbox' : 'production';
   const slug = firstSeg.replace(/-sandbox$/, '');
