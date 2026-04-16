@@ -81,7 +81,18 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
   }
 
   mkdirSync(releasesDir, { recursive: true });
-  mkdirSync(join(sharedDir, 'data'), { recursive: true });
+  const sharedData = join(sharedDir, 'data');
+  mkdirSync(sharedData, { recursive: true });
+
+  // Bind-mounted volumes inherit host ownership, not container ownership.
+  // Our Dockerfile runs as the `node` user (UID 1000 in node:*-alpine), so
+  // chown -R the shared dir to 1000:1000 on Linux; otherwise the container
+  // gets a read-only /data and apps crash with EACCES on their first write.
+  // Recursive chown also fixes files left over from older rootful containers.
+  // No-op on macOS/dev (chown fails silently, containers run rootful there).
+  try {
+    execFileSync('chown', ['-R', '1000:1000', sharedData], { stdio: 'pipe', timeout: 30000 });
+  } catch (_) {}
 
   const deployLog = [];
   let deployFinished = false;
