@@ -607,18 +607,16 @@ app.listen(PORT, HOST, async () => {
     log.warn('Auto-heal skipped: ' + e.message);
   }
 
-  // Orphan check — warn if PM2/filesystem apps are not registered in the DB
+  // Orphan check — warn if Docker containers are running but not tracked in the DB
   try {
     const { getOrphanedSlugs } = await import('./services/reconcile.js');
     const orphans = getOrphanedSlugs();
     if (orphans.length > 0) {
       log.warn('');
-      log.warn(`  ⚠  ${orphans.length} orphaned app(s) found — running in PM2 or data/apps/ but not in DB:`);
+      log.warn(`  ⚠  ${orphans.length} orphaned container(s) found — running but not in DB:`);
       for (const slug of orphans) log.warn(`       ${slug}`);
       log.warn('  Run: crane reconcile   (or POST /api/apps/reconcile)');
       log.warn('');
     }
-  } catch (e) {
-    // Non-critical — don't block startup
-  }
+  } catch (e) {}
 });
