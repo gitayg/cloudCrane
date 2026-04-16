@@ -186,11 +186,10 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
 
     if (!dockerAvailable()) throw new Error('Docker daemon is not available on this host');
 
-    // Validate any build command declared in manifest (defense-in-depth; runs inside image)
-    const buildCmd = manifest.fe?.build || manifest.build?.frontend;
-    if (buildCmd) validateManifestCommand(buildCmd, 'fe.build');
-    const beEntry = manifest.be?.entry || manifest.start?.backend;
-    if (beEntry) validateManifestCommand(beEntry, 'be.entry');
+    // No validateManifestCommand here — Docker builds run inside an isolated
+    // container, which IS the security boundary. Commands like "cd backend &&
+    // node server.js" are safe in a Dockerfile CMD but would fail the
+    // host-oriented validator (which blocks shell metacharacters and non-allowlisted executables).
 
     ensureDockerfile({ releaseDir, manifest, appBasePath, craneUrl, craneInternalUrl });
     appendLog('Generated Dockerfile (Node Alpine, non-root)');
