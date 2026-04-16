@@ -133,7 +133,8 @@ const PUBLIC_PATHS = ['/api/info', '/favicon.svg', '/login', '/api/identity/logi
 app.use((req, res, next) => {
   // Settings GETs are public (agents read branding); writes go through requireAdmin.
   const isPublicSettingsRead = req.method === 'GET' && req.path.startsWith('/api/settings');
-  if (PUBLIC_PATHS.includes(req.path) || req.path.startsWith('/docs/') || isPublicSettingsRead || req.method === 'OPTIONS') return next();
+  const isCrashPage = req.path.startsWith('/api/_crashed/');
+  if (PUBLIC_PATHS.includes(req.path) || req.path.startsWith('/docs/') || isPublicSettingsRead || isCrashPage || req.method === 'OPTIONS') return next();
 
   const db = getDb();
   const adminExists = db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'admin'").get().count > 0;
@@ -175,7 +176,7 @@ crane init --name admin --email you@example.com</pre>
 //
 // Excludes /api/identity/* and /api/apps/* so apps can still call AppCrane's
 // own identity / icon endpoints from inside their iframe.
-const APPCRANE_PASSTHROUGH = ['/api/identity', '/api/apps', '/api/info', '/favicon.svg', '/docs'];
+const APPCRANE_PASSTHROUGH = ['/api/identity', '/api/apps', '/api/info', '/api/_crashed', '/favicon.svg', '/docs'];
 const APPCRANE_PAGE_SLUGS = new Set(['login', 'dashboard', 'applications', 'users-page', 'audit-page', 'settings', 'docs', 'agent-guide', 'app']);
 app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return next();
@@ -456,6 +457,65 @@ app.get('/docs', (req, res) => res.sendFile(join(__dirname, '..', 'docs', 'index
 
 // Agent guide
 app.get('/agent-guide', (req, res) => { res.type('text/markdown'); res.sendFile(join(__dirname, '..', 'AGENT_GUIDE.md')); });
+
+// Friendly crash page. Caddy's handle_errors rewrites failed app proxy requests
+// to /api/_crashed<original-uri> so we can identify the app from the URL and
+// render a useful page instead of a blank upstream error.
+app.all('/api/_crashed/*', (req, res) => {
+  const rest = req.params[0] || '';
+  const firstSeg = rest.split(/[/?#]/).filter(Boolean)[0] || '';
+  const envSuffix = firstSeg.endsWith('-sandbox') ? 'sandbox' : 'production';
+  const slug = firstSeg.replace(/-sandbox$/, '');
+  let appName = slug || 'Unknown app';
+  try {
+    const db = getDb();
+    const row = slug ? db.prepare('SELECT name FROM apps WHERE slug = ?').get(slug) : null;
+    if (row?.name) appName = row.name;
+  } catch (_) {}
+
+  const esc = (s) => String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+  res.status(503).type('html').send(`<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>${esc(appName)} is unavailable</title>
+<style>
+body{background:#0f1117;color:#e4e4e7;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+.card{background:#1a1d27;border:1px solid #2a2d3a;border-radius:12px;padding:40px;max-width:520px;width:100%;text-align:center}
+.icon{font-size:48px;margin-bottom:12px}
+h1{margin:0 0 8px;font-size:1.4rem;font-weight:600}
+.env{display:inline-block;font-size:.7rem;color:#a1a1aa;background:#2a2d3a;border-radius:4px;padding:2px 8px;margin-left:6px;vertical-align:middle;text-transform:uppercase;letter-spacing:.5px}
+p{color:#a1a1aa;line-height:1.55;margin:8px 0}
+code{background:#0f1117;border:1px solid #2a2d3a;border-radius:4px;padding:2px 6px;font-size:.85rem;color:#e4e4e7}
+.actions{margin-top:24px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.btn{background:#3b82f6;color:#fff;padding:8px 16px;border-radius:6px;text-decoration:none;font-size:.9rem;font-weight:500}
+.btn:hover{background:#2563eb}
+.btn-ghost{background:transparent;color:#a1a1aa;border:1px solid #2a2d3a}
+.btn-ghost:hover{border-color:#3b82f6;color:#e4e4e7}
+.hint{font-size:.78rem;color:#71717a;margin-top:16px}
+</style></head>
+<body>
+<div class="card">
+  <div class="icon">⚠️</div>
+  <h1>${esc(appName)}<span class="env">${esc(envSuffix)}</span></h1>
+  <p>This app is currently unreachable — the container isn't responding.</p>
+  <p>Most likely causes:</p>
+  <p style="text-align:left;display:inline-block;font-size:.85rem">
+    • The app crashed on startup (check the deploy log)<br>
+    • The container hit its restart cap and stopped<br>
+    • A recent deploy is still in progress
+  </p>
+  <div class="actions">
+    <a class="btn" href="/app?slug=${esc(slug)}">Open app manager</a>
+    <a class="btn btn-ghost" href="/dashboard">Dashboard</a>
+  </div>
+  <div class="hint">If you're an admin, check <code>journalctl -u appcrane</code> or the deploy log on the dashboard.</div>
+</div>
+</body></html>`);
+});
 
 // Error handling
 app.use(notFound);
