@@ -14,7 +14,7 @@ router.use(requireAuth);
 const AUTO_STATUSES = [
   'new', 'selected', 'planning', 'pending_user_review_plan',
   'plan_approved', 'coding', 'sandbox_ready', 'merged',
-  'auto_failed', 'in_progress', 'done',
+  'auto_failed', 'in_progress', 'done', 'no_changes_needed',
 ];
 
 // ── Enhancement requests (extends existing) ─────────────────────────────
@@ -330,6 +330,45 @@ router.put('/anthropic-key', requireAdmin, auditMiddleware('appstudio.set-anthro
 
   log.info('Anthropic API key updated via settings');
   res.json({ message: 'Anthropic API key saved and applied' });
+});
+
+/**
+ * POST /api/appstudio/chat - Conversational pre-planning with AI (Feature 17)
+ */
+router.post('/chat', requireAdmin, async (req, res) => {
+  const { app_slug, messages } = req.body;
+  if (!Array.isArray(messages) || !messages.length) {
+    throw new AppError('messages array required', 400, 'VALIDATION');
+  }
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new AppError('ANTHROPIC_API_KEY not configured', 503, 'NOT_CONFIGURED');
+  }
+
+  const db = getDb();
+  let appContext = '';
+  if (app_slug) {
+    const app = db.prepare('SELECT name, description FROM apps WHERE slug = ?').get(app_slug);
+    if (app) appContext = `App: ${app.name}${app.description ? ` — ${app.description}` : ''}.`;
+  }
+
+  const { default: Anthropic } = await import('@anthropic-ai/sdk');
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  const systemPrompt = [
+    'You are a product planning assistant for AppCrane, an AI-powered app deployment platform.',
+    appContext,
+    'Help the user clarify and scope their feature request. Ask one focused question at a time.',
+    'Keep responses under 3 sentences. When requirements are clear, offer a concise summary starting with "Summary:".',
+  ].filter(Boolean).join(' ');
+
+  const response = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 512,
+    system: systemPrompt,
+    messages: messages.map(m => ({ role: m.role, content: String(m.content) })),
+  });
+
+  res.json({ content: response.content[0].text });
 });
 
 export default router;

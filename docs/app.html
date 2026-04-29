@@ -83,6 +83,13 @@ th{color:var(--dim);font-weight:500}
 .log-close{margin-left:auto;background:none;border:none;color:var(--dim);cursor:pointer;font-size:1.1rem;line-height:1;padding:0 4px}
 #logContent{flex:1;overflow-y:auto;padding:10px 16px;font-family:'SF Mono',Monaco,monospace;font-size:.73rem;line-height:1.6;white-space:pre-wrap;word-break:break-all}
 .log-err{color:var(--red)}.log-warn{color:var(--yellow)}.log-info{color:var(--accent)}.log-dim-line{display:none!important}
+/* Metrics */
+.metric-row{display:flex;gap:20px;flex-wrap:wrap}
+.metric-stat{display:flex;flex-direction:column;gap:1px}
+.metric-label{font-size:.68rem;color:var(--dim);text-transform:uppercase;letter-spacing:.4px}
+.metric-value{font-weight:600;font-size:.9rem}
+.metric-bar-wrap{background:var(--surface2);border-radius:3px;height:4px;width:80px;margin-top:3px}
+.metric-bar{height:4px;border-radius:3px;background:var(--accent);transition:width .4s}
 </style>
 </head>
 <body>
@@ -132,6 +139,29 @@ th{color:var(--dim);font-weight:500}
     <h3>Health</h3>
     <div id="healthInfo">Loading...</div>
     <button class="btn btn-sm btn-dim" onclick="testHealth()" style="margin-top:8px">Test Now</button>
+  </div>
+
+  <!-- Live resource metrics -->
+  <div class="card" id="metricsCard" style="display:none">
+    <h3 style="margin-bottom:10px">Resources <span id="metricsStatus" style="font-size:.72rem;font-weight:400;color:var(--dim);margin-left:6px"></span></h3>
+    <div class="metric-row" id="metricsInfo"></div>
+  </div>
+
+  <!-- Resource limits (admin only) -->
+  <div class="card hidden" id="limitsCard">
+    <h3 style="margin-bottom:10px">Resource Limits</h3>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end">
+      <div>
+        <label style="font-size:.78rem;color:var(--dim);display:block;margin-bottom:4px">RAM (MB)</label>
+        <input type="number" id="limitRam" min="128" max="8192" step="128" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;width:100px;font-size:.88rem">
+      </div>
+      <div>
+        <label style="font-size:.78rem;color:var(--dim);display:block;margin-bottom:4px">CPU (%)</label>
+        <input type="number" id="limitCpu" min="5" max="400" step="5" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;width:80px;font-size:.88rem">
+      </div>
+      <button class="btn btn-sm" onclick="saveLimits()">Save &amp; Redeploy</button>
+    </div>
+    <div style="font-size:.75rem;color:var(--dim);margin-top:6px">Changes take effect on next deploy.</div>
   </div>
 
   <!-- Deploy -->
@@ -282,6 +312,12 @@ function setEnv(env) {
 }
 
 async function loadApp() {
+  // Clear metrics poll on env switch
+  clearInterval(_metricsPoller); _metricsPoller = null;
+  loadMetrics();
+  _metricsPoller = setInterval(loadMetrics, 10000);
+  if (isAdmin) loadLimits();
+
   // Update toggle UI without calling loadApp again
   document.getElementById('envProd').className = 'env-btn' + (currentEnv === 'production' ? ' active-prod' : '');
   document.getElementById('envSand').className = 'env-btn' + (currentEnv === 'sandbox' ? ' active-sand' : '');
@@ -685,7 +721,8 @@ function setLogTab(tab) {
 }
 async function fetchRuntimeLogs() {
   try {
-    var d = await apiFetch('/api/apps/' + currentApp + '/logs/' + currentEnv);
+    var lines = (document.getElementById('logLines') || {}).value || 100;
+    var d = await apiFetch('/api/apps/' + currentApp + '/logs/' + currentEnv + '?lines=' + lines);
     renderLog(d.logs || []);
   } catch(e) {
     document.getElementById('logContent').innerHTML = '<span style="color:var(--red)">Error loading logs</span>';
@@ -740,6 +777,73 @@ function toggleLevel(level) {
   applyLogFilter();
 }
 
+// ── Live metrics (Feature 10) ────────────────────────────────
+var _metricsPoller = null;
+function fmtBytes(b) {
+  if (!b) return '0 MB';
+  if (b >= 1073741824) return (b/1073741824).toFixed(1) + ' GB';
+  return (b/1048576).toFixed(0) + ' MB';
+}
+function fmtUptime(ms) {
+  if (!ms) return '—';
+  var s = Math.floor(ms/1000), m = Math.floor(s/60), h = Math.floor(m/60), d = Math.floor(h/24);
+  if (d) return d + 'd ' + (h%24) + 'h';
+  if (h) return h + 'h ' + (m%60) + 'm';
+  if (m) return m + 'm';
+  return s + 's';
+}
+async function loadMetrics() {
+  if (!currentApp) return;
+  try {
+    var d = await apiFetch('/api/apps/' + currentApp + '/metrics/' + currentEnv);
+    var p = d.process || {};
+    var card = document.getElementById('metricsCard');
+    var info = document.getElementById('metricsInfo');
+    if (!p || p.status === 'stopped' || p.status === 'unknown') { card.style.display = 'none'; return; }
+    card.style.display = '';
+    document.getElementById('metricsStatus').textContent = '· ' + (p.status || '');
+    info.textContent = '';
+    var stats = [
+      { label: 'CPU', value: (p.cpu || 0).toFixed(1) + '%', bar: Math.min(p.cpu || 0, 100) },
+      { label: 'Memory', value: fmtBytes(p.memory), bar: null },
+      { label: 'Uptime', value: fmtUptime(p.uptime), bar: null },
+      { label: 'Restarts', value: String(p.restarts || 0), bar: null },
+    ];
+    stats.forEach(function(s) {
+      var stat = document.createElement('div'); stat.className = 'metric-stat';
+      var lbl = document.createElement('div'); lbl.className = 'metric-label'; lbl.textContent = s.label;
+      var val = document.createElement('div'); val.className = 'metric-value'; val.textContent = s.value;
+      stat.appendChild(lbl); stat.appendChild(val);
+      if (s.bar !== null) {
+        var wrap = document.createElement('div'); wrap.className = 'metric-bar-wrap';
+        var bar = document.createElement('div'); bar.className = 'metric-bar'; bar.style.width = s.bar + '%';
+        wrap.appendChild(bar); stat.appendChild(wrap);
+      }
+      info.appendChild(stat);
+    });
+  } catch(e) { document.getElementById('metricsCard').style.display = 'none'; }
+}
+
+// ── Resource limits (Feature 8) ──────────────────────────────
+async function loadLimits() {
+  if (!isAdmin || !currentApp) return;
+  try {
+    var d = await apiFetch('/api/apps/' + currentApp);
+    var rl = d.app.resource_limits || {};
+    document.getElementById('limitRam').value = rl.max_ram_mb || 512;
+    document.getElementById('limitCpu').value = rl.max_cpu_percent || 50;
+    document.getElementById('limitsCard').classList.remove('hidden');
+  } catch(e) {}
+}
+async function saveLimits() {
+  var ram = parseInt(document.getElementById('limitRam').value) || 512;
+  var cpu = parseInt(document.getElementById('limitCpu').value) || 50;
+  if (ram < 128 || cpu < 5) { showMsg('Invalid limits', false); return; }
+  var d = await apiFetch('/api/apps/' + currentApp, { method: 'PUT', body: { resource_limits: { max_ram_mb: ram, max_cpu_percent: cpu } } });
+  if (d.error) { showMsg(d.error.message, false); return; }
+  showMsg('Resource limits saved. Redeploy to apply.', true);
+}
+
 // Init — remove stale appName display (breadcrumb replaces it)
 if (KEY) { init(); } else { document.getElementById('loginPanel').classList.remove('hidden'); }
 </script>
@@ -751,6 +855,7 @@ if (KEY) { init(); } else { document.getElementById('loginPanel').classList.remo
       <button class="log-tab" id="tabBuild" onclick="setLogTab('build')">Build Log</button>
     </div>
     <input class="log-filter-input" id="logFilter" placeholder="Filter\u2026" oninput="applyLogFilter()">
+    <select id="logLines" onchange="if(_logTab==='runtime'){clearInterval(_logPoller);fetchRuntimeLogs();_logPoller=setInterval(fetchRuntimeLogs,4000)}" style="background:var(--surface2);border:1px solid var(--border);color:var(--dim);padding:3px 6px;border-radius:4px;font-size:.75rem;font-family:inherit"><option value="100">100 lines</option><option value="500">500 lines</option><option value="1000">1000 lines</option></select>
     <button class="log-lvl-btn" id="lvlErr" onclick="toggleLevel('error')" title="Show only errors">Error</button>
     <button class="log-lvl-btn" id="lvlWarn" onclick="toggleLevel('warn')" title="Show only warnings">Warn</button>
     <button class="log-lvl-btn" id="lvlInfo" onclick="toggleLevel('info')" title="Show only info">Info</button>

@@ -73,12 +73,13 @@ router.get('/:slug/audit', requireAppAccess, (req, res) => {
 router.get('/:slug/logs/:env', requireAppAccess, async (req, res) => {
   const { env } = req.params;
   const url3 = new URL(req.url, `http://${req.headers.host}`);
-  const lines = parseInt(url3.searchParams.get('lines')) || 100;
+  const lines = Math.min(parseInt(url3.searchParams.get('lines')) || 100, 2000);
+  const search = url3.searchParams.get('search') || '';
   const app = req.app;
 
   try {
     const { getAppLogs } = await import('../services/docker.js');
-    const logs = await getAppLogs(app.slug, env, lines);
+    const logs = await getAppLogs(app.slug, env, lines, search);
     res.json({ logs });
   } catch (e) {
     res.json({ logs: [], message: 'Container logs not available (app may not be running)' });

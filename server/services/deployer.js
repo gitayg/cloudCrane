@@ -6,6 +6,18 @@ import { decrypt } from './encryption.js';
 import log from '../utils/logger.js';
 import { ensureCodebaseContext } from './appstudio/contextBuilder.js';
 
+async function waitForHealth(url, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
+      if (res.ok) return true;
+    } catch (_) {}
+    await new Promise(r => setTimeout(r, 2000));
+  }
+  return false;
+}
+
 function parseResourceLimits(raw) {
   try {
     const parsed = typeof raw === 'string' ? JSON.parse(raw) : (raw || {});
@@ -197,7 +209,7 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
 
     db.prepare("UPDATE deployments SET status = 'deploying' WHERE id = ?").run(deployId);
 
-    const { dockerAvailable, buildImage, startApp: dockerStart, stopApp: dockerStop, pruneOldImages } = await import('./docker.js');
+    const { dockerAvailable, buildImageIfNeeded, getContainerImage, startApp: dockerStart, stopApp: dockerStop, pruneOldImages } = await import('./docker.js');
     const { ensureDockerfile } = await import('./dockerfileGen.js');
     const { validateDockerfile } = await import('./dockerfileValidator.js');
 
@@ -216,13 +228,17 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
     }
 
     appendLog('Building docker image...');
-    const image = await buildImage({
+    const image = await buildImageIfNeeded({
       slug: app.slug,
       contextDir: releaseDir,
       commitHash,
       onLog: (line) => { if (deployLog.length < 500) appendLog(`  ${line}`); },
     });
-    appendLog(`Image built: ${image}`);
+    appendLog(`Image ready: ${image}`);
+
+    // Capture old image tag so we can revert if health check fails (Feature 9)
+    let prevImage = null;
+    try { prevImage = await getContainerImage(app.slug, env); } catch (_) {}
 
     await dockerStop(app.slug, env).catch(() => {});
 
@@ -249,6 +265,23 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
       cpus: limits.max_cpu_percent / 100,
     });
     appendLog(`Container started: appcrane-${app.slug}-${env} (host port ${bePort})`);
+
+    // Health-validate the new container; revert to previous image on failure (Feature 9)
+    if (manifest.be?.health) {
+      const healthUrl = `http://localhost:${bePort}${manifest.be.health}`;
+      appendLog(`Validating new container health at ${manifest.be.health} (30s)…`);
+      const healthy = await waitForHealth(healthUrl, 30000);
+      if (!healthy) {
+        appendLog('Health check failed — stopping new container');
+        await dockerStop(app.slug, env).catch(() => {});
+        if (prevImage) {
+          appendLog(`Reverting to previous image: ${prevImage}`);
+          await dockerStart({ slug: app.slug, env, image: prevImage, hostPort: bePort, envVars: runtimeEnvVars, volumes: [{ host: resolve(join(sharedDir, 'data')), container: '/data' }], memoryMb: limits.max_ram_mb, cpus: limits.max_cpu_percent / 100 }).catch(() => {});
+        }
+        throw new Error(`New container failed health check (${manifest.be.health}). Previous version restored.`);
+      }
+      appendLog('Health check passed');
+    }
 
     pruneOldImages(app.slug, 2);
 

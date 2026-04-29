@@ -30,6 +30,23 @@ function imageTag(slug, commitHash) {
   return `appcrane-${slug}:${tag}`;
 }
 
+export async function buildImageIfNeeded({ slug, contextDir, commitHash, onLog }) {
+  const tag = imageTag(slug, commitHash);
+  if (commitHash && commitHash !== 'unknown') {
+    try {
+      await dockerExec(['image', 'inspect', tag, '--format', '{{.Id}}'], { timeout: 5000 });
+      onLog?.(`Using cached image: ${tag} (skipping rebuild)`);
+      return tag;
+    } catch (_) {}
+  }
+  return buildImage({ slug, contextDir, commitHash, onLog });
+}
+
+export async function getContainerImage(slug, env) {
+  const name = containerName(slug, env);
+  return dockerExec(['inspect', name, '--format', '{{.Config.Image}}'], { timeout: 5000 });
+}
+
 export async function buildImage({ slug, contextDir, commitHash, onLog }) {
   const tag = imageTag(slug, commitHash);
   const args = ['build', '-t', tag, '--label', APPCRANE_LABEL, '--label', `slug=${slug}`, contextDir];
@@ -143,11 +160,14 @@ function parseMemoryUsage(s) {
   return Math.round(n * mul);
 }
 
-export async function getAppLogs(slug, env, lines = 100) {
+export async function getAppLogs(slug, env, lines = 100, search = '') {
   const name = containerName(slug, env);
   try {
     const output = await dockerExec(['logs', '--tail', String(lines), name]);
-    return output.split('\n');
+    const allLines = output.split('\n');
+    if (!search) return allLines;
+    const q = search.toLowerCase();
+    return allLines.filter(l => l.toLowerCase().includes(q));
   } catch (e) {
     return [];
   }

@@ -257,6 +257,7 @@ async function handleCode(job) {
   const branchName = `appstudio/${enh.id}-${app.slug}`;
   const commitMsg  = `appstudio: ${(plan?.summary || enh.message).slice(0, 72)}`;
   let pushConflict = false;
+  let noChanges = false;
 
   const onCodingDone = async (workspaceDir, _branch) => {
     onLog('[studio:git] Staging all file changes…');
@@ -269,7 +270,9 @@ async function handleCode(job) {
     } catch (_) {}
 
     if (changedFiles.length === 0) {
-      onLog('[studio:git] No file changes detected after coding');
+      onLog('[studio:git] No file changes detected — enhancement may already be implemented');
+      noChanges = true;
+      return;
     } else {
       onLog(`[studio:git] ${changedFiles.length} file(s) staged:\n` + changedFiles.map(f => `  + ${f}`).join('\n'));
       onLog(`[studio:git] Committing: "${commitMsg}"`);
@@ -322,6 +325,19 @@ async function handleCode(job) {
   });
 
   cleanupWorkspace(job.id);
+
+  if (noChanges) {
+    const note = `\n[${new Date().toISOString()}] Claude made no file changes — enhancement appears already implemented or no action needed.\n`;
+    db.prepare(`
+      UPDATE enhancement_requests
+      SET status = 'no_changes_needed',
+          ai_log = COALESCE(ai_log, '') || ?
+      WHERE id = ?
+    `).run(note, enh.id);
+    log.info(`AppStudio: enh #${enh.id} → no_changes_needed (no files modified by Claude)`);
+    finishJob(job.id, 'done', null);
+    return;
+  }
 
   if (pushConflict) {
     const note = `\n[${new Date().toISOString()}] Push rejected — branch ${branchName} already has remote changes. Re-planning with updated context.\n`;
