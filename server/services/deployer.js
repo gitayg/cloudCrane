@@ -201,7 +201,7 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
     const { ensureDockerfile } = await import('./dockerfileGen.js');
     const { validateDockerfile } = await import('./dockerfileValidator.js');
 
-    if (!dockerAvailable()) throw new Error('Docker daemon is not available on this host');
+    if (!await dockerAvailable()) throw new Error('Docker daemon is not available on this host');
 
     const { userProvided } = ensureDockerfile({ releaseDir, manifest, appBasePath, craneUrl, craneInternalUrl });
 
@@ -216,7 +216,7 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
     }
 
     appendLog('Building docker image...');
-    const image = buildImage({
+    const image = await buildImage({
       slug: app.slug,
       contextDir: releaseDir,
       commitHash,

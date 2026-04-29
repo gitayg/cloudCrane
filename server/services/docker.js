@@ -1,16 +1,18 @@
-import { execFileSync, spawnSync } from 'child_process';
+import { execFile, spawn } from 'child_process';
+import { promisify } from 'util';
 import log from '../utils/logger.js';
 
+const execFileAsync = promisify(execFile);
 const CONTAINER_PORT = 3000;
 const APPCRANE_LABEL = 'appcrane=true';
 
-function dockerExec(args, opts = {}) {
+async function dockerExec(args, opts = {}) {
   try {
-    return execFileSync('docker', args, {
+    const { stdout } = await execFileAsync('docker', args, {
       timeout: 60000,
-      stdio: 'pipe',
       ...opts,
-    }).toString().trim();
+    });
+    return stdout.trim();
   } catch (e) {
     const output = e.stdout?.toString() || e.stderr?.toString() || e.message;
     log.debug(`docker ${args[0]} failed: ${output}`);
@@ -28,21 +30,34 @@ function imageTag(slug, commitHash) {
   return `appcrane-${slug}:${tag}`;
 }
 
-export function buildImage({ slug, contextDir, commitHash, onLog }) {
+export async function buildImage({ slug, contextDir, commitHash, onLog }) {
   const tag = imageTag(slug, commitHash);
   const args = ['build', '-t', tag, '--label', APPCRANE_LABEL, '--label', `slug=${slug}`, contextDir];
-  const result = spawnSync('docker', args, { stdio: 'pipe', timeout: 600000 });
-  const stdout = result.stdout?.toString() || '';
-  const stderr = result.stderr?.toString() || '';
-  if (onLog) {
-    for (const line of (stdout + stderr).split('\n')) {
-      if (line.trim()) onLog(line);
-    }
-  }
-  if (result.status !== 0) {
-    throw new Error(`docker build failed: ${stderr.slice(-400) || stdout.slice(-400)}`);
-  }
-  return tag;
+
+  return new Promise((resolve, reject) => {
+    const child = spawn('docker', args, { stdio: 'pipe' });
+    let stderrBuf = '';
+
+    const emit = (line) => { if (line.trim()) onLog?.(line); };
+    child.stdout.on('data', (c) => c.toString().split('\n').forEach(emit));
+    child.stderr.on('data', (c) => {
+      const s = c.toString();
+      stderrBuf += s;
+      s.split('\n').forEach(emit);
+    });
+
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error('docker build timed out after 10 minutes'));
+    }, 600000);
+
+    child.on('error', (err) => { clearTimeout(timer); reject(err); });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (code !== 0) return reject(new Error(`docker build failed: ${stderrBuf.slice(-400)}`));
+      resolve(tag);
+    });
+  });
 }
 
 export async function startApp({ slug, env, image, hostPort, envVars = {}, volumes = [], memoryMb = 512, cpus = 0.5 }) {
@@ -78,22 +93,22 @@ export async function startApp({ slug, env, image, hostPort, envVars = {}, volum
   }
 
   args.push(image);
-  const id = dockerExec(args);
+  const id = await dockerExec(args);
   log.info(`docker started: ${name} (${id.slice(0, 12)}) from ${image}`);
   return id;
 }
 
 export async function stopApp(slug, env) {
   const name = containerName(slug, env);
-  try { dockerExec(['stop', name], { timeout: 15000 }); } catch (e) {}
-  try { dockerExec(['rm', '-f', name]); } catch (e) {}
+  try { await dockerExec(['stop', name], { timeout: 15000 }); } catch (e) {}
+  try { await dockerExec(['rm', '-f', name]); } catch (e) {}
   log.debug(`docker stopped: ${name}`);
 }
 
 export async function restartApp(slug, env) {
   const name = containerName(slug, env);
   try {
-    dockerExec(['restart', name], { timeout: 20000 });
+    await dockerExec(['restart', name], { timeout: 20000 });
     log.info(`docker restarted: ${name}`);
   } catch (e) {
     log.warn(`docker restart ${name} failed: ${e.message}`);
@@ -104,10 +119,10 @@ export async function restartApp(slug, env) {
 export async function getProcessMetrics(slug, env) {
   const name = containerName(slug, env);
   try {
-    const inspectOut = dockerExec(['inspect', name, '--format', '{{.State.Status}}|{{.State.Pid}}|{{.State.StartedAt}}|{{.RestartCount}}']);
+    const inspectOut = await dockerExec(['inspect', name, '--format', '{{.State.Status}}|{{.State.Pid}}|{{.State.StartedAt}}|{{.RestartCount}}']);
     const [status, pid, startedAt, restarts] = inspectOut.split('|');
     if (status !== 'running') return { status, cpu: 0, memory: 0, pid: Number(pid) || 0, uptime: 0, restarts: Number(restarts) || 0 };
-    const statsOut = dockerExec(['stats', '--no-stream', '--format', '{{.CPUPerc}}|{{.MemUsage}}', name]);
+    const statsOut = await dockerExec(['stats', '--no-stream', '--format', '{{.CPUPerc}}|{{.MemUsage}}', name]);
     const [cpuPerc, memUsage] = statsOut.split('|');
     const cpu = parseFloat(cpuPerc.replace('%', '')) || 0;
     const memory = parseMemoryUsage(memUsage);
@@ -131,7 +146,7 @@ function parseMemoryUsage(s) {
 export async function getAppLogs(slug, env, lines = 100) {
   const name = containerName(slug, env);
   try {
-    const output = dockerExec(['logs', '--tail', String(lines), name]);
+    const output = await dockerExec(['logs', '--tail', String(lines), name]);
     return output.split('\n');
   } catch (e) {
     return [];
@@ -141,7 +156,7 @@ export async function getAppLogs(slug, env, lines = 100) {
 export async function listAll() {
   try {
     const format = '{{.Names}}|{{.Label "slug"}}|{{.Label "env"}}|{{.Status}}|{{.ID}}';
-    const output = dockerExec(['ps', '-a', '--filter', `label=${APPCRANE_LABEL}`, '--format', format]);
+    const output = await dockerExec(['ps', '-a', '--filter', `label=${APPCRANE_LABEL}`, '--format', format]);
     if (!output) return [];
     return output.split('\n').map(line => {
       const [name, slug, env, status, id] = line.split('|');
@@ -152,9 +167,9 @@ export async function listAll() {
   }
 }
 
-export function pruneOldImages(slug, keep = 2) {
+export async function pruneOldImages(slug, keep = 2) {
   try {
-    const out = dockerExec(['images', '--filter', `label=slug=${slug}`, '--format', '{{.ID}} {{.CreatedAt}}']);
+    const out = await dockerExec(['images', '--filter', `label=slug=${slug}`, '--format', '{{.ID}} {{.CreatedAt}}']);
     if (!out) return;
     const rows = out.split('\n').map(l => {
       const sp = l.indexOf(' ');
@@ -162,14 +177,14 @@ export function pruneOldImages(slug, keep = 2) {
     });
     rows.sort((a, b) => b.created.localeCompare(a.created));
     for (const row of rows.slice(keep)) {
-      try { dockerExec(['rmi', '-f', row.id]); } catch (e) {}
+      try { await dockerExec(['rmi', '-f', row.id]); } catch (e) {}
     }
   } catch (e) {}
 }
 
-export function dockerAvailable() {
+export async function dockerAvailable() {
   try {
-    execFileSync('docker', ['version', '--format', '{{.Server.Version}}'], { timeout: 5000, stdio: 'pipe' });
+    await execFileAsync('docker', ['version', '--format', '{{.Server.Version}}'], { timeout: 5000 });
     return true;
   } catch (e) {
     return false;
