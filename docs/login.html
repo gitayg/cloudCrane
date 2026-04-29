@@ -2150,7 +2150,7 @@ const _JOB_STATUS_LABELS = {
   auto_failed: 'Failed',
 };
 
-function _makeJobRow(slug, phase, rawStatus, statusClass, message, actionFn, actionLabel) {
+function _makeJobRow(slug, phase, rawStatus, statusClass, message, actionFn, actionLabel, jobId) {
   const row = document.createElement('div');
   row.className = 'job-row';
   const top = document.createElement('div');
@@ -2165,10 +2165,16 @@ function _makeJobRow(slug, phase, rawStatus, statusClass, message, actionFn, act
   statusEl.className = statusClass;
   statusEl.textContent = _JOB_STATUS_LABELS[rawStatus] || rawStatus || '';
   top.appendChild(slugEl); top.appendChild(phaseEl); top.appendChild(statusEl);
+  if (jobId) {
+    const idEl = document.createElement('span');
+    idEl.style.cssText = 'margin-left:auto;font-size:.65rem;color:var(--dim);font-family:monospace;opacity:.7';
+    idEl.textContent = '#' + String(jobId).padStart(4, '0');
+    top.appendChild(idEl);
+  }
   if (actionFn) {
     const btn = document.createElement('button');
     btn.className = 'ask-sessions-btn';
-    btn.style.cssText = 'margin-left:auto;font-size:.68rem;padding:2px 8px';
+    btn.style.cssText = 'font-size:.68rem;padding:2px 8px' + (jobId ? '' : ';margin-left:auto');
     btn.textContent = actionLabel || 'View \u2192';
     btn.addEventListener('click', function(e) { e.stopPropagation(); actionFn(); });
     top.appendChild(btn);
@@ -2201,7 +2207,7 @@ async function refreshJobsList() {
       hdr.textContent = 'Active (all users)';
       list.appendChild(hdr);
       activeJobs.forEach(function(j) {
-        var row = _makeJobRow(j.app_slug, j.phase, j.status, j.status === 'running' ? 'job-status-running' : 'job-status-queued', j.enhancement_message);
+        var row = _makeJobRow(j.app_slug, j.phase, j.status, j.status === 'running' ? 'job-status-running' : 'job-status-queued', j.enhancement_message, null, null, j.id);
         row.addEventListener('click', (function(id) { return function() { openJobDetail(id); }; })(j.id));
         list.appendChild(row);
       });
@@ -2218,7 +2224,7 @@ async function refreshJobsList() {
         const actionFn = req.status === 'pending_user_review_plan'
           ? function() { openPlanById(req.id, req.app_slug); }
           : null;
-        var row = _makeJobRow(req.app_slug, req.phase || '', req.status, cls, req.message, actionFn, 'View Plan \u2192');
+        var row = _makeJobRow(req.app_slug, req.phase || '', req.status, cls, req.message, actionFn, 'View Plan \u2192', req.job_id || null);
         if (req.job_id) {
           row.addEventListener('click', (function(jid, af) { return function(e) { if (!af || !e.target.closest('button')) openJobDetail(jid); }; })(req.job_id, actionFn));
         }
