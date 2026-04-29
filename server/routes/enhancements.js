@@ -140,13 +140,41 @@ router.post('/:id/set-status', requireAuth, requireAdmin, (req, res) => {
 
 /**
  * POST /api/enhancements/:id/delete
- * Delete an enhancement request. Requires admin.
+ * Delete an enhancement request. Admins can delete any request; regular
+ * users can delete requests they submitted themselves. Refuses to delete
+ * while a job is actively running.
  */
-router.post('/:id/delete', requireAuth, requireAdmin, (req, res) => {
+router.post('/:id/delete', (req, res) => {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  const session = getUserFromBearer(token);
+
+  let userId, userRole;
+  if (session) {
+    userId = session.user_id;
+    userRole = session.role;
+  } else {
+    const apiKey = req.headers['x-api-key'];
+    if (!apiKey) throw new AppError('Authentication required', 401, 'UNAUTHORIZED');
+    const db2 = getDb();
+    const user = db2.prepare('SELECT * FROM users WHERE api_key_hash = ?').get(hashApiKey(apiKey));
+    if (!user) throw new AppError('Invalid API key', 401, 'UNAUTHORIZED');
+    userId = user.id;
+    userRole = user.role;
+  }
+
   const db = getDb();
   const id = parseInt(req.params.id, 10);
-  const row = db.prepare('SELECT id FROM enhancement_requests WHERE id = ?').get(id);
+  const row = db.prepare('SELECT id, user_id FROM enhancement_requests WHERE id = ?').get(id);
   if (!row) throw new AppError('Not found', 404, 'NOT_FOUND');
+
+  const isAdmin = userRole === 'admin';
+  const isOwner = row.user_id && row.user_id === userId;
+  if (!isAdmin && !isOwner) throw new AppError('You can only delete your own requests', 403, 'FORBIDDEN');
+
+  const active = db.prepare("SELECT 1 FROM enhancement_jobs WHERE enhancement_id = ? AND status IN ('queued', 'running') LIMIT 1").get(id);
+  if (active) throw new AppError('Cannot delete a request with an active job — wait for it to finish first', 409, 'JOB_ACTIVE');
+
   db.prepare('DELETE FROM enhancement_jobs WHERE enhancement_id = ?').run(id);
   db.prepare('DELETE FROM enhancement_requests WHERE id = ?').run(id);
   res.json({ message: 'Deleted' });

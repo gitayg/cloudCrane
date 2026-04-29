@@ -2583,6 +2583,31 @@ async function refreshJobsList() {
           ? function() { openPlanById(req.id, req.app_slug); }
           : null;
         var row = _makeJobRow(req.app_slug, req.phase || '', req.status, cls, req.message, actionFn, 'View Plan \u2192', req.job_id || null);
+
+        // Delete button \u2014 only enabled when no job is active
+        const jobActive = req.job_status === 'queued' || req.job_status === 'running';
+        const delBtn = document.createElement('button');
+        delBtn.className = 'ask-sessions-btn';
+        delBtn.style.cssText = 'font-size:.68rem;padding:2px 6px;margin-left:6px;color:var(--red);border-color:var(--red)';
+        delBtn.textContent = '\u2715';
+        delBtn.title = jobActive ? 'Cannot delete \u2014 a job is running' : 'Delete this request';
+        delBtn.disabled = jobActive;
+        if (jobActive) delBtn.style.opacity = '0.4';
+        delBtn.addEventListener('click', (function(id) {
+          return function(e) {
+            e.stopPropagation();
+            if (!confirm('Delete this enhancement request?')) return;
+            fetch(API + '/api/enhancements/' + id + '/delete', {
+              method: 'POST',
+              headers: { 'Authorization': 'Bearer ' + sessionToken },
+            }).then(function(r) {
+              if (r.ok) { refreshJobsList(); refreshJobsBadge(); }
+              else return r.json().then(function(d) { alert(d.error || 'Delete failed'); });
+            }).catch(function(err) { alert('Delete failed: ' + err.message); });
+          };
+        })(req.id));
+        row.querySelector('.job-row-top').appendChild(delBtn);
+
         if (req.job_id) {
           row.addEventListener('click', (function(jid, af) { return function(e) { if (!af || !e.target.closest('button')) openJobDetail(jid); }; })(req.job_id, actionFn));
         }
