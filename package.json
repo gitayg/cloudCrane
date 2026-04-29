@@ -1,6 +1,6 @@
 {
   "name": "appcrane",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "AppCrane - Self-hosted deployment manager. CLI + REST API.",
   "license": "FSL-1.1-ALv2",
   "type": "module",
