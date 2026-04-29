@@ -166,6 +166,49 @@ input:focus{border-color:var(--accent)}
 
 .hidden{display:none!important}
 @media(max-width:500px){.user-details{display:none}.apps-grid{grid-template-columns:1fr}.catalog-grid{grid-template-columns:1fr}}
+
+/* Ask Claude panel */
+.ask-panel{position:absolute;top:44px;right:0;bottom:0;width:380px;background:var(--bg);border-left:1px solid var(--border);display:flex;flex-direction:column;z-index:20;transform:translateX(100%);transition:transform .25s ease}
+.ask-panel.open{transform:translateX(0)}
+.ask-header{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border);flex-shrink:0;font-weight:600;font-size:.88rem}
+.ask-app-label{font-size:.75rem;color:var(--dim);font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px}
+.ask-header-right{margin-left:auto;display:flex;align-items:center;gap:6px}
+.ask-close{background:none;border:none;cursor:pointer;color:var(--dim);font-size:1.1rem;padding:2px 4px;line-height:1}
+.ask-sessions-btn{background:none;border:none;cursor:pointer;color:var(--accent);font-size:.73rem;padding:2px 6px}
+.ask-messages{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+.ask-empty{color:var(--dim);font-size:.82rem;text-align:center;margin-top:40px}
+.ask-msg{max-width:88%;padding:8px 12px;border-radius:8px;font-size:.83rem;line-height:1.55;white-space:pre-wrap;word-break:break-word}
+.ask-msg.user{background:var(--accent);color:#fff;align-self:flex-end;border-bottom-right-radius:3px}
+.ask-msg.assistant{background:var(--surface);border:1px solid var(--border);align-self:flex-start;border-bottom-left-radius:3px}
+.ask-working{padding:8px 12px 4px;flex-shrink:0;display:flex;align-items:center;gap:8px}
+.ask-spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
+.ask-working-text{font-size:.75rem;color:var(--dim);font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.ask-input-area{border-top:1px solid var(--border);padding:10px;flex-shrink:0}
+.ask-peek-bar{display:flex;align-items:center;gap:6px;font-size:.74rem;color:var(--dim);margin-bottom:6px;padding:4px 8px;background:var(--surface);border-radius:4px;border:1px solid var(--border)}
+.ask-peek-bar button{background:none;border:none;cursor:pointer;color:var(--dim);font-size:.9rem;margin-left:auto;padding:0 2px}
+.ask-input-row{display:flex;gap:8px;align-items:flex-end}
+.ask-textarea{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--fg, var(--text));font-size:.83rem;padding:7px 10px;resize:none;font-family:inherit;line-height:1.4;max-height:120px}
+.ask-textarea:focus{outline:none;border-color:var(--accent)}
+.ask-send{background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 14px;cursor:pointer;font-size:.83rem;font-weight:500;white-space:nowrap}
+.ask-send:disabled{opacity:.45;cursor:not-allowed}
+
+/* Jobs panel */
+.jobs-panel{position:absolute;top:44px;right:0;width:340px;background:var(--surface);border:1px solid var(--border);border-radius:0 0 0 10px;z-index:30;box-shadow:0 8px 24px #0005;display:none}
+.jobs-panel.open{display:block}
+.jobs-panel-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);font-size:.85rem;font-weight:600}
+.jobs-panel-close{background:none;border:none;cursor:pointer;color:var(--dim);font-size:1.1rem;padding:0 4px}
+.jobs-list{max-height:320px;overflow-y:auto;padding:6px 0}
+.job-row{padding:8px 14px;display:flex;flex-direction:column;gap:3px;border-bottom:1px solid var(--border)}
+.job-row:last-child{border-bottom:none}
+.job-row-top{display:flex;align-items:center;gap:8px;font-size:.78rem}
+.job-slug{color:var(--accent);font-weight:600}
+.job-phase{background:var(--surface2);border-radius:4px;padding:1px 7px;font-size:.68rem}
+.job-status-running{color:#f59e0b;font-size:.7rem;font-weight:600}
+.job-status-queued{color:var(--dim);font-size:.7rem}
+.job-msg{font-size:.75rem;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.jobs-empty{padding:18px 14px;font-size:.82rem;color:var(--dim);text-align:center}
+.jobs-badge{background:#ef4444;color:#fff;border-radius:8px;font-size:.62rem;font-weight:700;padding:1px 5px;line-height:1.4;margin-left:3px;vertical-align:middle;display:none}
+.jobs-badge.has-jobs{display:inline}
 </style>
 </head>
 <body>
@@ -187,13 +230,54 @@ input:focus{border-color:var(--accent)}
         </div>
       </div>
       <span id="frameUserInfo" class="frame-user"></span>
-      <button id="peekBtn" class="btn-enhance" onclick="togglePeekMode()" title="Point & click an element to add context to your enhancement request (Esc to cancel)">🎯 Point</button>
+      <button id="peekBtn" class="btn-enhance" onclick="togglePeekMode()" title="Point & click an element to add context (Esc to cancel)">🎯 Point</button>
+      <button class="btn-enhance" onclick="openAskPanel()">🤖 Ask</button>
       <button class="btn-enhance" onclick="openEnhModal()">💡 Request Enhancement</button>
+      <button id="jobsBtn" class="btn-enhance" onclick="toggleJobsPanel()" style="display:none">📋 Jobs<span id="jobsBadge" class="jobs-badge"></span></button>
       <a id="frameNewTab" href="#" target="_blank" class="btn-newtab">Open in new tab ↗</a>
       <button class="btn-back" onclick="closeApp()">← Back</button>
     </div>
   </div>
   <div id="peekHint" class="peek-hint">🎯 Click any element in the page to capture it as context · Press <b>Esc</b> to cancel</div>
+
+  <!-- Ask Claude panel -->
+  <div id="askPanel" class="ask-panel">
+    <div class="ask-header">
+      <span>🤖 Ask Claude</span>
+      <span id="askPanelAppLabel" class="ask-app-label"></span>
+      <div class="ask-header-right">
+        <button class="ask-sessions-btn" onclick="showAskSessionsPicker()" title="Previous conversations">History</button>
+        <button class="ask-close" onclick="closeAskPanel()">×</button>
+      </div>
+    </div>
+    <div id="askMessages" class="ask-messages">
+      <div class="ask-empty">Ask Claude anything about this application — it will read the source code to answer.</div>
+    </div>
+    <div id="askWorking" class="ask-working" style="display:none">
+      <div class="ask-spinner"></div>
+      <div id="askWorkingText" class="ask-working-text">Analyzing codebase...</div>
+    </div>
+    <div class="ask-input-area">
+      <div id="askPeekBar" class="ask-peek-bar" style="display:none">
+        <span>🎯</span><span id="askPeekLabel" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+        <button onclick="clearAskPeekCtx()">×</button>
+      </div>
+      <div class="ask-input-row">
+        <textarea id="askInput" class="ask-textarea" placeholder="Ask about this application..." rows="2" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAskQuestion();}"></textarea>
+        <button id="askSendBtn" class="ask-send" onclick="sendAskQuestion()">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pending jobs panel -->
+  <div id="jobsPanel" class="jobs-panel">
+    <div class="jobs-panel-header">
+      <span>📋 Active Jobs</span>
+      <button class="jobs-panel-close" onclick="closeJobsPanel()">×</button>
+    </div>
+    <div id="jobsList" class="jobs-list"><div class="jobs-empty">No active jobs</div></div>
+  </div>
+
   <iframe id="frameIframe" src="" allow="fullscreen"></iframe>
 </div>
 
@@ -852,6 +936,12 @@ let currentAppSlug = null;
 
 function openApp(url, name, slug, hasIcon) {
   currentAppSlug = slug;
+  _askSessionId = null;
+  _askPeekCtx = null;
+  document.getElementById('askPanelAppLabel').textContent = name || '';
+  document.getElementById('askMessages').innerHTML = '<div class="ask-empty">Ask Claude anything about this application — it will read the source code to answer.</div>';
+  document.getElementById('askWorking').style.display = 'none';
+  document.getElementById('askPeekBar').style.display = 'none';
   document.getElementById('frameAppName').textContent = name;
   document.getElementById('frameNewTab').href = url;
   document.getElementById('frameIframe').src = url;
@@ -865,10 +955,16 @@ function openApp(url, name, slug, hasIcon) {
   if (hasIcon && slug) {
     icon.src = window.location.origin + '/api/apps/' + slug + '/icon';
   }
+  if (currentUser && currentUser.role === 'admin') {
+    document.getElementById('jobsBtn').style.display = '';
+    refreshJobsBadge();
+  }
 }
 
 function closeApp() {
   if (_peekActive) stopPeekMode();
+  closeAskPanel();
+  closeJobsPanel();
   document.getElementById('appFrame').classList.remove('open');
   document.getElementById('frameIframe').src = '';
   const icon = document.getElementById('frameAppIcon');
@@ -1072,8 +1168,14 @@ function _peekClick(e) {
   e.stopPropagation();
   const info = _capturePeekInfo(e.target);
   stopPeekMode();
-  _peekContext = info;
-  openEnhModal(currentAppSlug, document.getElementById('frameAppName').textContent);
+  if (document.getElementById('askPanel').classList.contains('open')) {
+    _askPeekCtx = info;
+    document.getElementById('askPeekLabel').textContent = (info.tag ? '<' + info.tag + '>' : '') + (info.text ? ' "' + info.text.slice(0, 60) + '"' : ' ' + info.selector);
+    document.getElementById('askPeekBar').style.display = 'flex';
+  } else {
+    _peekContext = info;
+    openEnhModal(currentAppSlug, document.getElementById('frameAppName').textContent);
+  }
 }
 
 function _peekKeydown(e) {
@@ -1325,6 +1427,202 @@ function startOidc() {
 function startSaml() {
   const redirect = redirectUrl || window.location.origin + '/login';
   window.location.href = API + '/api/auth/saml/start?redirect=' + encodeURIComponent(redirect);
+}
+
+// ── Ask Claude ───────────────────────────────────────────────────────────
+var _askSessionId = null;
+var _askPeekCtx   = null;
+var _askBusy      = false;
+
+function openAskPanel() {
+  if (!currentAppSlug) return;
+  document.getElementById('askPanel').classList.add('open');
+}
+
+function closeAskPanel() {
+  document.getElementById('askPanel').classList.remove('open');
+}
+
+function clearAskPeekCtx() {
+  _askPeekCtx = null;
+  document.getElementById('askPeekBar').style.display = 'none';
+}
+
+function _appendAskMsg(role, content) {
+  const container = document.getElementById('askMessages');
+  const empty = container.querySelector('.ask-empty');
+  if (empty) empty.remove();
+  const div = document.createElement('div');
+  div.className = 'ask-msg ' + role;
+  div.textContent = content;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  return div;
+}
+
+async function sendAskQuestion() {
+  if (_askBusy) return;
+  const input = document.getElementById('askInput');
+  let question = input.value.trim();
+  if (!question) return;
+
+  if (_askPeekCtx) {
+    const c = _askPeekCtx;
+    const ctx = ['--- Pointed element ---', 'URL: ' + c.path, 'Selector: ' + c.selector,
+      'Tag: <' + c.tag + '>' + (c.id ? ' #' + c.id : ''), c.text ? 'Text: "' + c.text + '"' : null]
+      .filter(Boolean).join('\n');
+    question = ctx + '\n\n' + question;
+    clearAskPeekCtx();
+  }
+
+  input.value = '';
+  _askBusy = true;
+  document.getElementById('askSendBtn').disabled = true;
+  _appendAskMsg('user', question);
+
+  const workEl = document.getElementById('askWorking');
+  const workTxt = document.getElementById('askWorkingText');
+  workEl.style.display = 'flex';
+  workTxt.textContent = 'Spinning up container...';
+
+  try {
+    const r = await fetch(API + '/api/ask/' + currentAppSlug, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + sessionToken },
+      body: JSON.stringify({ question: question, session_id: _askSessionId }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error((d.error && d.error.message) || 'Failed');
+    _askSessionId = d.session_id;
+
+    const es = new EventSource(API + '/api/ask/stream/' + d.job_id);
+    es.onmessage = function(e) {
+      const evt = JSON.parse(e.data);
+      if (evt.type === 'log') {
+        workTxt.textContent = evt.text.replace(/^\[ask\]\s*/, '').replace(/^\[stderr\]\s*/, '');
+      } else if (evt.type === 'done') {
+        es.close();
+        workEl.style.display = 'none';
+        _appendAskMsg('assistant', evt.answer || '(no response)');
+        _askBusy = false;
+        document.getElementById('askSendBtn').disabled = false;
+        document.getElementById('askInput').focus();
+      } else if (evt.type === 'error') {
+        es.close();
+        workEl.style.display = 'none';
+        _appendAskMsg('assistant', '⚠️ ' + evt.message);
+        _askBusy = false;
+        document.getElementById('askSendBtn').disabled = false;
+      }
+    };
+    es.onerror = function() {
+      es.close();
+      workEl.style.display = 'none';
+      _appendAskMsg('assistant', '⚠️ Connection lost. Try again.');
+      _askBusy = false;
+      document.getElementById('askSendBtn').disabled = false;
+    };
+  } catch (err) {
+    workEl.style.display = 'none';
+    _appendAskMsg('assistant', '⚠️ ' + err.message);
+    _askBusy = false;
+    document.getElementById('askSendBtn').disabled = false;
+  }
+}
+
+async function showAskSessionsPicker() {
+  if (!currentAppSlug) return;
+  try {
+    const r = await fetch(API + '/api/ask/sessions/' + currentAppSlug, {
+      headers: { 'Authorization': 'Bearer ' + sessionToken },
+    });
+    const d = await r.json();
+    if (!d.sessions || !d.sessions.length) { alert('No previous conversations for this app.'); return; }
+    const labels = d.sessions.map(function(s, i) { return (i + 1) + '. ' + (s.title || 'Untitled') + ' (' + s.updated_at.slice(0, 10) + ')'; });
+    const choice = prompt('Select a conversation (enter number):\n\n' + labels.join('\n'));
+    const idx = parseInt(choice, 10) - 1;
+    if (isNaN(idx) || idx < 0 || idx >= d.sessions.length) return;
+    const sess = d.sessions[idx];
+    _askSessionId = sess.id;
+    const mr = await fetch(API + '/api/ask/session/' + sess.id, {
+      headers: { 'Authorization': 'Bearer ' + sessionToken },
+    });
+    const md = await mr.json();
+    const container = document.getElementById('askMessages');
+    container.innerHTML = '';
+    (md.messages || []).forEach(function(m) { _appendAskMsg(m.role, m.content); });
+    if (!md.messages || !md.messages.length) {
+      container.innerHTML = '<div class="ask-empty">No messages in this session.</div>';
+    }
+  } catch (err) {
+    alert('Failed to load sessions: ' + err.message);
+  }
+}
+
+// ── Jobs panel ───────────────────────────────────────────────────────────
+var _jobsPollTimer = null;
+
+function toggleJobsPanel() {
+  const panel = document.getElementById('jobsPanel');
+  if (panel.classList.contains('open')) { closeJobsPanel(); return; }
+  panel.classList.add('open');
+  refreshJobsList();
+  _jobsPollTimer = setInterval(refreshJobsList, 8000);
+}
+
+function closeJobsPanel() {
+  document.getElementById('jobsPanel').classList.remove('open');
+  if (_jobsPollTimer) { clearInterval(_jobsPollTimer); _jobsPollTimer = null; }
+}
+
+async function refreshJobsList() {
+  try {
+    const r = await fetch(API + '/api/ask/jobs', { headers: { 'Authorization': 'Bearer ' + sessionToken } });
+    const d = await r.json();
+    const jobs = d.jobs || [];
+    const badge = document.getElementById('jobsBadge');
+    if (jobs.length > 0) { badge.textContent = jobs.length; badge.classList.add('has-jobs'); }
+    else { badge.classList.remove('has-jobs'); }
+    const list = document.getElementById('jobsList');
+    if (!document.getElementById('jobsPanel').classList.contains('open')) return;
+    if (!jobs.length) { list.innerHTML = '<div class="jobs-empty">No active jobs</div>'; return; }
+    list.innerHTML = '';
+    jobs.forEach(function(j) {
+      const row = document.createElement('div');
+      row.className = 'job-row';
+      const top = document.createElement('div');
+      top.className = 'job-row-top';
+      const slug = document.createElement('span');
+      slug.className = 'job-slug';
+      slug.textContent = j.app_slug;
+      const phase = document.createElement('span');
+      phase.className = 'job-phase';
+      phase.textContent = j.phase;
+      const status = document.createElement('span');
+      status.className = j.status === 'running' ? 'job-status-running' : 'job-status-queued';
+      status.textContent = j.status;
+      top.appendChild(slug);
+      top.appendChild(phase);
+      top.appendChild(status);
+      const msg = document.createElement('div');
+      msg.className = 'job-msg';
+      msg.textContent = j.enhancement_message || '';
+      row.appendChild(top);
+      row.appendChild(msg);
+      list.appendChild(row);
+    });
+  } catch (_) {}
+}
+
+async function refreshJobsBadge() {
+  try {
+    const r = await fetch(API + '/api/ask/jobs', { headers: { 'Authorization': 'Bearer ' + sessionToken } });
+    const d = await r.json();
+    const jobs = d.jobs || [];
+    const badge = document.getElementById('jobsBadge');
+    if (jobs.length > 0) { badge.textContent = jobs.length; badge.classList.add('has-jobs'); }
+    else { badge.classList.remove('has-jobs'); }
+  } catch (_) {}
 }
 
 checkSession();

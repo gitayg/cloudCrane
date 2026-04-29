@@ -23,7 +23,7 @@ export function cleanupWorkspace(jobId) {
 const STUDIO_IMAGE_VERSION = '2'; // bump to force image rebuild
 
 // Build the studio Docker image when missing or outdated
-async function ensureStudioImage(onLog) {
+export async function ensureStudioImage(onLog) {
   try {
     const info = execFileSync('docker', ['image', 'inspect', '--format', '{{index .Config.Labels "appcrane.studio.version"}}', STUDIO_IMAGE], { stdio: 'pipe', timeout: 10000 });
     if (info.toString().trim() === STUDIO_IMAGE_VERSION) return;
