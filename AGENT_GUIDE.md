@@ -434,18 +434,33 @@ crash at runtime with `Cannot find package 'X'`. Optional related fields:
 | `be.workdir` | `.` (repo root) | Path to backend's package.json + entry |
 | `fe.workdir` | `.` (repo root) | Path to frontend's package.json + build |
 
+### Custom Dockerfile (optional)
+
+By default AppCrane generates a `Dockerfile` for every app (Node Alpine, non-root user, tini entrypoint). If you need full control over the OS layer or installed system packages, ship your own `Dockerfile` at the repo root — AppCrane will use it as-is and skip generation.
+
+**Rules for user-provided Dockerfiles:**
+- Must include `EXPOSE <port>` matching the port in `deployhub.json` (default 3000)
+- Must not run as root — end with `USER <non-root-user>`
+- Must not hardcode secrets in `ENV` instructions — use AppCrane env vars instead
+- Do not declare `VOLUME /data` — AppCrane mounts it at runtime
+
+**What AppCrane always controls at runtime (regardless of your Dockerfile):**
+- `APP_BASE_PATH`, `CRANE_URL`, `CRANE_INTERNAL_URL`, `DATA_DIR` are injected via `docker run --env` and override any Dockerfile values
+- The `/data` volume is mounted by AppCrane at container start
+
+AppCrane validates your Dockerfile before building and fails the deploy with a clear error if any rule is violated.
+
 ### What happens during deploy
 
 1. AppCrane pulls code from GitHub (or uses uploaded files)
 2. Reads `deployhub.json` for build/start commands
-3. Runs `npm install` (or `npm ci`)
-4. Runs frontend build command (e.g., `npm run build`)
-5. Writes `.env` file from encrypted env vars stored in AppCrane
-6. Symlinks `data/` directory (persistent across deploys)
-7. Starts backend via PM2 using the `be.entry` command
-8. Runs health check on the health endpoint
-9. If healthy: swaps the `current` symlink to new release
-10. If unhealthy: marks deploy as failed, keeps previous version running
+3. Checks for a `Dockerfile` at repo root — uses it if present, generates one (Node Alpine) if not
+4. If user-provided: validates Dockerfile (EXPOSE, non-root, no hardcoded secrets)
+5. Builds Docker image
+6. Injects runtime env vars and mounts `/data` volume at container start
+7. Runs health check on the health endpoint
+8. If healthy: swaps the `current` symlink to new release
+9. If unhealthy: marks deploy as failed, keeps previous version running
 
 ### What persists across deploys
 
