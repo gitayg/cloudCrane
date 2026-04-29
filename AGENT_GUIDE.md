@@ -323,6 +323,16 @@ Response:
 - Each environment (production/sandbox) has its own separate env vars
 - ALWAYS use different database URLs for production and sandbox
 
+**`VITE_*` variables do NOT work with AppCrane env vars.**  
+AppCrane injects env vars at `docker run` time — after `npm run build` has already completed. Vite embeds env vars into the bundle at build time, so any `VITE_*` var set in AppCrane will always be `undefined` in the browser.
+
+**The correct pattern for frontend config / API keys:**
+- Keep the key in an AppCrane env var (e.g. `ANTHROPIC_API_KEY`) — server-side only
+- Add a backend route that reads the key from `process.env` and proxies the API call
+- The frontend calls your backend route — the raw key never touches the browser
+
+Changing the key then only requires updating the env var and restarting the container — no rebuild needed, key never exposed in the bundle.
+
 **Never build UI for system-wide LLM/provider keys (Anthropic, OpenAI, etc.).** Do not add a settings page, admin form, or DB row that asks an admin to paste an `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / similar. These are infrastructure secrets, not app data:
 
 - Read them only from `process.env.ANTHROPIC_API_KEY` (set via `PUT /api/apps/SLUG/env/ENV`)
