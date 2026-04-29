@@ -60,7 +60,9 @@ export function validateDockerfile(releaseDir, { expectedPort } = {}) {
   }
 
   // --- Managed env vars override ---
-  const MANAGED_VARS = ['APP_BASE_PATH', 'CRANE_URL', 'CRANE_INTERNAL_URL', 'DATA_DIR'];
+  // APP_BASE_PATH is no longer runtime-managed (build-arg only); your Dockerfile
+  // can declare ARG APP_BASE_PATH to receive it at build time.
+  const MANAGED_VARS = ['CRANE_URL', 'CRANE_INTERNAL_URL', 'DATA_DIR'];
   for (const line of lines) {
     if (!/^ENV\s+/i.test(line)) continue;
     for (const v of MANAGED_VARS) {

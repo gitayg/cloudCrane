@@ -139,15 +139,19 @@ export function ensureDockerfile({ releaseDir, manifest, appBasePath, craneUrl, 
 
   if (buildCmd) {
     const buildDir = feWorkdir || '.';
+    // APP_BASE_PATH / PUBLIC_URL / VITE_BASE_PATH are scoped to the build RUN
+    // only (not declared as ENV). They must NOT persist into the runtime image
+    // because Caddy strips the slug prefix from incoming requests; backends
+    // mount at '/'. See bugs/2026-04-26-appcrane-app-base-path-resolution.md
+    const buildEnv = `APP_BASE_PATH="${appBasePath}" PUBLIC_URL="${appBasePath}" VITE_BASE_PATH="${appBasePath}"`;
     lines.push(
-      `ENV APP_BASE_PATH="${appBasePath}"`,
-      `ENV PUBLIC_URL="${appBasePath}"`,
-      `ENV VITE_BASE_PATH="${appBasePath}"`,
       `ENV CRANE_URL="${craneUrl}"`,
       `ENV CRANE_INTERNAL_URL="${craneInternalUrl}"`,
       'ENV NODE_ENV=production',
       'ENV CI=true',
-      buildDir === '.' ? `RUN ${buildCmd}` : `RUN cd ${buildDir} && ${buildCmd}`,
+      buildDir === '.'
+        ? `RUN ${buildEnv} ${buildCmd}`
+        : `RUN cd ${buildDir} && ${buildEnv} ${buildCmd}`,
       '',
     );
   }

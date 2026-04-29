@@ -441,8 +441,9 @@ router.post('/:slug/restart/:env', requireAppAccess, auditMiddleware('restart'),
   }
   const cranePort = process.env.PORT || 5001;
   const craneUrl = process.env.CRANE_DOMAIN ? `https://${process.env.CRANE_DOMAIN}` : `http://localhost:${cranePort}`;
+  // APP_BASE_PATH is intentionally NOT set at runtime — see deployer.js and
+  // bugs/2026-04-26-appcrane-app-base-path-resolution.md
   Object.assign(runtimeEnvVars, {
-    APP_BASE_PATH: env === 'production' ? `/${app.slug}/` : `/${app.slug}-sandbox/`,
     CRANE_URL: craneUrl,
     CRANE_INTERNAL_URL: `http://localhost:${cranePort}`,
     DATA_DIR: '/data',

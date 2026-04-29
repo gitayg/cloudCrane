@@ -10,7 +10,7 @@ Read this first; it supersedes parts of the reports below.
 
 | Date | File | Status | Title |
 |---|---|---|---|
-| 2026-04-26 | [app-base-path-resolution](2026-04-26-appcrane-app-base-path-resolution.md) | **Decided — to ship** | Resolution: build-time only + docs callout |
+| 2026-04-26 | [app-base-path-resolution](2026-04-26-appcrane-app-base-path-resolution.md) | **Implemented v1.17.0** | Resolution: build-time only + docs callout |
 | 2026-04-26 | [app-base-path-semantics](2026-04-26-appcrane-app-base-path-semantics.md) | Open (root cause) | Root issue: APP_BASE_PATH conflates two semantics |
 | 2026-04-26 | [app-base-path-docs](2026-04-26-appcrane-app-base-path-docs.md) | Open — text in resolution | AGENT_GUIDE.md missing common-pitfalls callout |
 | 2026-04-26 | [subpath-starter-template](2026-04-26-appcrane-subpath-starter-template.md) | Open | Ship a working sub-path SPA + API starter |

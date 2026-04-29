@@ -33,7 +33,7 @@ function imageTag(slug, env, commitHash) {
   return `appcrane-${slug}-${env}:${safe}`;
 }
 
-export async function buildImageIfNeeded({ slug, env, contextDir, commitHash, onLog }) {
+export async function buildImageIfNeeded({ slug, env, contextDir, commitHash, appBasePath, onLog }) {
   const tag = imageTag(slug, env, commitHash);
   if (commitHash && commitHash !== 'unknown') {
     try {
@@ -42,7 +42,7 @@ export async function buildImageIfNeeded({ slug, env, contextDir, commitHash, on
       return tag;
     } catch (_) {}
   }
-  return buildImage({ slug, env, contextDir, commitHash, onLog });
+  return buildImage({ slug, env, contextDir, commitHash, appBasePath, onLog });
 }
 
 export async function getContainerImage(slug, env) {
@@ -50,9 +50,18 @@ export async function getContainerImage(slug, env) {
   return dockerExec(['inspect', name, '--format', '{{.Config.Image}}'], { timeout: 5000 });
 }
 
-export async function buildImage({ slug, env, contextDir, commitHash, onLog }) {
+export async function buildImage({ slug, env, contextDir, commitHash, appBasePath, onLog }) {
   const tag = imageTag(slug, env, commitHash);
-  const args = ['build', '-t', tag, '--label', APPCRANE_LABEL, '--label', `slug=${slug}`, '--label', `env=${env}`, contextDir];
+  const args = ['build', '-t', tag, '--label', APPCRANE_LABEL, '--label', `slug=${slug}`, '--label', `env=${env}`];
+  // Build-time only: bundlers (Vite, CRA, Next) need APP_BASE_PATH to emit
+  // correct asset URLs. Caddy strips this prefix at runtime, so it must NOT
+  // appear in the runtime container env — see bugs/2026-04-26-appcrane-app-base-path-resolution.md
+  if (appBasePath) {
+    args.push('--build-arg', `APP_BASE_PATH=${appBasePath}`);
+    args.push('--build-arg', `PUBLIC_URL=${appBasePath}`);
+    args.push('--build-arg', `VITE_BASE_PATH=${appBasePath}`);
+  }
+  args.push(contextDir);
 
   return new Promise((resolve, reject) => {
     const child = spawn('docker', args, { stdio: 'pipe' });

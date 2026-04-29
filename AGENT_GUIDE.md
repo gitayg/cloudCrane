@@ -108,21 +108,26 @@ If you see any of these in the browser console, this is the cause:
 - `personas.json` 404
 - the app's router showing the "not found" route on hard refresh
 
-To fix it, **every URL the browser sees must include the slug prefix**. AppCrane gives you that prefix two ways:
+To fix it, **every URL the browser sees must include the slug prefix**. AppCrane injects the prefix at **build time only**, so the bundler can bake it into asset URLs:
 
-1. **At build time** — `APP_BASE_PATH`, `PUBLIC_URL`, and `VITE_BASE_PATH` are injected into the env when AppCrane runs your build command. Use them so the bundler bakes the prefix into asset URLs.
-2. **At runtime** — `APP_BASE_PATH` and `CRANE_URL` are also set in the backend's PM2 env, so you can read them from `process.env` in server code.
+`APP_BASE_PATH`, `PUBLIC_URL`, and `VITE_BASE_PATH` are set during `docker build` (auto-generated Dockerfiles and as `--build-arg` for user-provided Dockerfiles). They are **not** present in the runtime container env — Caddy strips the slug prefix before requests reach your container, so backends mount at `/`.
 
-AppCrane injects these standard env vars into every deploy automatically — **do not hardcode these values**:
+> **Sub-path apps: `APP_BASE_PATH` is for the bundler only.**
+>
+> Mount your backend at `/`. Caddy strips the slug prefix (`/{slug}/`) before requests reach your container — prefixing backend routes will 404 every request. `APP_BASE_PATH` is set during build (so Vite/CRA/Next emit prefixed asset URLs), but is **unset at runtime**. If your backend code does `app.use(\`${process.env.APP_BASE_PATH}/api\`, …)`, the variable is undefined at runtime and reduces to `app.use('/api', …)` — which is the right thing.
 
-| Var | Example value | Purpose |
-|-----|--------------|---------|
-| `APP_BASE_PATH` | `/myapp/` or `/myapp-sandbox/` | Path prefix for this env (build + runtime) |
-| `VITE_BASE_PATH` | same | Same value, Vite-prefixed name for `vite.config.js` |
-| `PUBLIC_URL` | same | Same value, CRA convention |
-| `CRANE_URL` | `https://your-crane-domain.com` | Public AppCrane URL — use for browser-side redirects/links |
-| `CRANE_INTERNAL_URL` | `http://localhost:5001` | Server-to-server URL — use for identity/verify fetches from backend code |
-| `PORT` | `4001` | Backend listen port (runtime only) |
+AppCrane injects these standard env vars automatically — **do not hardcode these values**:
+
+| Var | Example value | Phase | Purpose |
+|-----|--------------|-------|---------|
+| `APP_BASE_PATH` | `/myapp/` or `/myapp-sandbox/` | Build only | Path prefix for the bundler (asset URLs) |
+| `VITE_BASE_PATH` | same | Build only | Vite-prefixed alias for `vite.config.js` |
+| `PUBLIC_URL` | same | Build only | CRA-convention alias |
+| `CRANE_URL` | `https://your-crane-domain.com` | Build + runtime | Public AppCrane URL — browser-side redirects/links |
+| `CRANE_INTERNAL_URL` | `http://localhost:5001` | Runtime | Server-to-server URL — identity/verify fetches from backend |
+| `PORT` | `4001` | Runtime | Backend listen port |
+
+> **User-provided Dockerfiles:** to receive the build-time vars, add `ARG APP_BASE_PATH` (and optionally `ARG PUBLIC_URL` / `ARG VITE_BASE_PATH`) near the top of your Dockerfile, then reference them in your build `RUN`. Without `ARG`, your bundler can't see them.
 
 **Identity verify calls** — always use `CRANE_INTERNAL_URL` from server code (avoids public-IP loopback issues where the machine can't reach its own HTTPS endpoint):
 ```javascript
@@ -149,7 +154,7 @@ export default defineConfig({
 This makes `import.meta.env.BASE_URL` resolve to `/{slug}/` in your built code.
 
 > **Vite fallback must be `'./'`, not `'/'`.**
-> AppCrane injects `APP_BASE_PATH` into the generated Dockerfile before the build step. If you ship a custom Dockerfile, this injection does not happen — Vite falls back to whatever the `|| ...` value is. Using `'/'` causes a MIME type error: the browser requests `/{slug}/assets/index.js`, the SPA catch-all serves `index.html` instead, and the JS never executes. Using `'./'` makes all asset paths relative so they resolve correctly at any sub-path even without the env var.
+> AppCrane passes `APP_BASE_PATH` to `docker build` as a `--build-arg` (and bakes it into the auto-generated Dockerfile's build step). Custom Dockerfiles must declare `ARG APP_BASE_PATH` to receive it. If neither path applies, Vite falls back to the `|| …` value. Using `'/'` causes a MIME type error: the browser requests `/{slug}/assets/index.js`, the SPA catch-all serves `index.html` instead, and the JS never executes. Using `'./'` makes all asset paths relative so they resolve correctly at any sub-path even without the env var.
 
 **Create React App**: `PUBLIC_URL` is read automatically — no config change needed, but you must reference assets via `process.env.PUBLIC_URL` (e.g. `<img src={process.env.PUBLIC_URL + '/logo.png'}>`), not as plain `/logo.png`.
 
@@ -496,7 +501,8 @@ By default AppCrane generates a `Dockerfile` for every app (Node Alpine, non-roo
 > inside your own Dockerfile if you're not running as that UID.
 
 **What AppCrane always controls at runtime (regardless of your Dockerfile):**
-- `APP_BASE_PATH`, `CRANE_URL`, `CRANE_INTERNAL_URL`, `DATA_DIR` are injected via `docker run --env` and override any Dockerfile values
+- `CRANE_URL`, `CRANE_INTERNAL_URL`, `DATA_DIR` are injected via `docker run --env` and override any Dockerfile values
+- `APP_BASE_PATH` is **build-time only** (passed as `--build-arg` to `docker build`); not present in the runtime env
 - The `/data` volume is mounted by AppCrane at container start
 
 AppCrane validates your Dockerfile before building and fails the deploy with a clear error if any rule is violated.

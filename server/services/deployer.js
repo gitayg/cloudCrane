@@ -233,6 +233,7 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
       env,
       contextDir: releaseDir,
       commitHash,
+      appBasePath,
       onLog: (line) => { if (deployLog.length < 500) appendLog(`  ${line}`); },
     });
     appendLog(`Image ready: ${image}`);
@@ -247,8 +248,11 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
     for (const v of envVars) {
       try { runtimeEnvVars[v.key] = decrypt(v.value_encrypted); } catch (_) {}
     }
+    // APP_BASE_PATH is intentionally NOT set at runtime: Caddy strips the slug
+    // prefix before requests reach the container, so backends must mount at '/'.
+    // The variable is build-time only (bundlers need it for asset URLs) — see
+    // bugs/2026-04-26-appcrane-app-base-path-resolution.md
     Object.assign(runtimeEnvVars, {
-      APP_BASE_PATH: appBasePath,
       CRANE_URL: craneUrl,
       CRANE_INTERNAL_URL: craneInternalUrl,
     });

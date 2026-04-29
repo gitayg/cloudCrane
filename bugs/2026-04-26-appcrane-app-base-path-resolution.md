@@ -1,7 +1,7 @@
 # RESOLUTION: APP_BASE_PATH becomes build-time only
 
 **Component:** AppCrane
-**Status:** Decided 2026-04-26
+**Status:** Implemented 2026-04-26 (v1.17.0)
 **Decision owner:** itay.glick@opswat.com
 
 ## Decision
@@ -83,3 +83,32 @@ navi-pl ships as-is once the deploy completes against the fixed AppCrane.
   the bundler step.
 - AGENT_GUIDE has the callout in Option 3.
 - `crane.glick.run` deploy of navi-pl succeeds without app-side changes.
+
+## Implementation (v1.17.0, 2026-04-26)
+
+- `server/services/deployer.js` — removed `APP_BASE_PATH` from
+  `runtimeEnvVars`; pass `appBasePath` through to `buildImageIfNeeded`.
+- `server/routes/deploy.js` — removed `APP_BASE_PATH` from the
+  restart-with-env-update path.
+- `server/services/docker.js` — `buildImage` / `buildImageIfNeeded`
+  accept `appBasePath` and emit `--build-arg APP_BASE_PATH=…` (plus
+  `PUBLIC_URL` and `VITE_BASE_PATH` for CRA/Vite ergonomics).
+- `server/services/dockerfileGen.js` — auto-generated Dockerfiles now
+  scope `APP_BASE_PATH` / `PUBLIC_URL` / `VITE_BASE_PATH` to the build
+  `RUN` command only (no `ENV` declaration), so they don't persist
+  into the runtime image.
+- `server/services/dockerfileValidator.js` — dropped `APP_BASE_PATH`
+  from `MANAGED_VARS` (no longer runtime-managed).
+- `AGENT_GUIDE.md` — replaced the build+runtime split with a build-only
+  description, added the prominent "Sub-path apps: APP_BASE_PATH is
+  for the bundler only" callout, added a note for user-provided
+  Dockerfiles to declare `ARG APP_BASE_PATH`.
+
+### Migration note for user-provided Dockerfiles
+
+Previously, AppCrane injected `APP_BASE_PATH` into the runtime env, so
+user Dockerfiles that ran a build step would only see it if they had
+their own `ENV APP_BASE_PATH=…` line — meaning bundler `base` config
+relying on this var was already inconsistent. Now the var is passed
+explicitly as `--build-arg`, and Dockerfiles that want it must declare
+`ARG APP_BASE_PATH` near the top.
