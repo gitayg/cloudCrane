@@ -37,8 +37,11 @@ function detectBuild(manifest, releaseDir) {
 }
 
 function entryToCmd(entry) {
-  const parts = entry.trim().split(/\s+/);
-  return JSON.stringify(parts);
+  const trimmed = entry.trim();
+  if (/[;&|<>]/.test(trimmed)) {
+    return `["sh", "-c", ${JSON.stringify(trimmed)}]`;
+  }
+  return JSON.stringify(trimmed.split(/\s+/));
 }
 
 /**
