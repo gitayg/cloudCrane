@@ -397,7 +397,9 @@ router.post('/:slug/promote', requireAppAccess, auditMiddleware('promote'), asyn
 });
 
 /**
- * POST /api/apps/:slug/restart/:env - Rewrite .env from DB then restart PM2
+ * POST /api/apps/:slug/restart/:env - Recreate the container with fresh env vars from the DB.
+ * docker restart does NOT re-read env vars (they're baked in at `docker run`), so we inspect the
+ * running container to find its image, stop it, and start a new one with the current env.
  */
 router.post('/:slug/restart/:env', requireAppAccess, auditMiddleware('restart'), async (req, res) => {
   const { env } = req.params;
@@ -409,33 +411,72 @@ router.post('/:slug/restart/:env', requireAppAccess, auditMiddleware('restart'),
   const app = req.app;
   const ports = getPortsForSlot(app.slot);
   const { decrypt } = await import('../services/encryption.js');
-  const { writeFileSync, existsSync } = await import('fs');
+  const { execFile } = await import('child_process');
+  const { promisify } = await import('util');
   const { resolve, join } = await import('path');
+  const execFileAsync = promisify(execFile);
 
-  // Rewrite .env from current DB values so new vars take effect on restart
-  const dataDir = resolve(process.env.DATA_DIR || './data');
-  const sharedDir = resolve(join(dataDir, 'apps', app.slug, env, 'shared'));
+  const containerName = `appcrane-${app.slug}-${env}`;
 
-  if (existsSync(sharedDir)) {
-    const envVars = db.prepare(
-      'SELECT key, value_encrypted FROM env_vars WHERE app_id = ? AND env = ?'
-    ).all(app.id, env);
+  // Find the image currently running. If the container doesn't exist (never deployed or pruned),
+  // fall back to the most recent live deployment record.
+  let image = null;
+  try {
+    const { stdout } = await execFileAsync('docker', ['inspect', containerName, '--format', '{{.Config.Image}}'], { timeout: 10000 });
+    image = stdout.trim();
+  } catch (_) {}
 
-    const envContent = envVars.map(v => {
-      try { return `${v.key}=${decrypt(v.value_encrypted)}`; }
-      catch (e) { return `# ERROR decrypting ${v.key}`; }
-    }).join('\n');
-
-    const bePort = env === 'production' ? ports.prod_be : ports.sand_be;
-    const fePort = env === 'production' ? ports.prod_fe : ports.sand_fe;
-    const fullEnv = `${envContent}\nPORT=${bePort}\nFE_PORT=${fePort}\nNODE_ENV=${env === 'production' ? 'production' : 'development'}\n`;
-
-    writeFileSync(join(sharedDir, `.env.${env}`), fullEnv);
+  if (!image) {
+    throw new AppError(`Container ${containerName} not found. Run a deploy first.`, 400, 'NO_CONTAINER');
   }
 
-  const { restartApp } = await import('../services/docker.js');
-  await restartApp(app.slug, env);
-  res.json({ message: `Restarted ${app.slug} ${env} with updated env vars` });
+  // Rebuild runtime env vars from DB
+  const envVars = db.prepare(
+    'SELECT key, value_encrypted FROM env_vars WHERE app_id = ? AND env = ?'
+  ).all(app.id, env);
+
+  const runtimeEnvVars = {};
+  for (const v of envVars) {
+    try { runtimeEnvVars[v.key] = decrypt(v.value_encrypted); } catch (_) {}
+  }
+  const cranePort = process.env.PORT || 5001;
+  const craneUrl = process.env.CRANE_DOMAIN ? `https://${process.env.CRANE_DOMAIN}` : `http://localhost:${cranePort}`;
+  Object.assign(runtimeEnvVars, {
+    APP_BASE_PATH: env === 'production' ? `/${app.slug}/` : `/${app.slug}-sandbox/`,
+    CRANE_URL: craneUrl,
+    CRANE_INTERNAL_URL: `http://localhost:${cranePort}`,
+    DATA_DIR: '/data',
+  });
+
+  const dataDir = resolve(process.env.DATA_DIR || './data');
+  const sharedDir = resolve(join(dataDir, 'apps', app.slug, env, 'shared'));
+  const bePort = env === 'production' ? ports.prod_be : ports.sand_be;
+
+  // Parse resource limits the same way the deployer does
+  let limits = { max_ram_mb: 512, max_cpu_percent: 50 };
+  try {
+    const parsed = JSON.parse(app.resource_limits || '{}');
+    limits = {
+      max_ram_mb: Number(parsed.max_ram_mb) || 512,
+      max_cpu_percent: Number(parsed.max_cpu_percent) || 50,
+    };
+  } catch (_) {}
+
+  // Recreate: stop + start with fresh env
+  const { startApp: dockerStart, stopApp: dockerStop } = await import('../services/docker.js');
+  await dockerStop(app.slug, env).catch(() => {});
+  await dockerStart({
+    slug: app.slug,
+    env,
+    image,
+    hostPort: bePort,
+    envVars: runtimeEnvVars,
+    volumes: [{ host: resolve(join(sharedDir, 'data')), container: '/data' }],
+    memoryMb: limits.max_ram_mb,
+    cpus: limits.max_cpu_percent / 100,
+  });
+
+  res.json({ message: `Restarted ${app.slug} ${env} with updated env vars`, image });
 });
 
 export default router;
