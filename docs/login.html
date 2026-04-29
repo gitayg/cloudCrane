@@ -264,6 +264,7 @@ input:focus{border-color:var(--accent)}
       </div>
       <div class="ask-input-row">
         <textarea id="askInput" class="ask-textarea" placeholder="Ask about this application..." rows="2" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAskQuestion();}"></textarea>
+        <button id="askPeekBtn" class="btn-enhance" onclick="togglePeekMode()" title="Point & click an element to add context (Esc to cancel)" style="padding:7px 10px;flex-shrink:0">🎯</button>
         <button id="askSendBtn" class="ask-send" onclick="sendAskQuestion()">Send</button>
       </div>
     </div>
@@ -1112,6 +1113,7 @@ function togglePeekMode() {
 
   _peekActive = true;
   document.getElementById('peekBtn').classList.add('active');
+  document.getElementById('askPeekBtn').classList.add('active');
   document.getElementById('peekHint').classList.add('active');
 
   var style = doc.getElementById('__ac_peek_style');
@@ -1134,6 +1136,7 @@ function togglePeekMode() {
 function stopPeekMode() {
   _peekActive = false;
   document.getElementById('peekBtn').classList.remove('active');
+  document.getElementById('askPeekBtn').classList.remove('active');
   document.getElementById('peekHint').classList.remove('active');
   try {
     const doc = document.getElementById('frameIframe').contentDocument;
