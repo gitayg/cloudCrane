@@ -70,9 +70,33 @@ app.use((req, res, next) => {
   next();
 });
 
+// Global API rate limiter: 300 req/min per IP
+const _apiRateMap = new Map();
+setInterval(() => { const now = Date.now(); for (const [ip, rec] of _apiRateMap) { if (now > rec.resetAt) _apiRateMap.delete(ip); } }, 5 * 60_000);
+function apiRateLimit(req, res, next) {
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const now = Date.now();
+  const rec = _apiRateMap.get(ip);
+  if (!rec || now > rec.resetAt) { _apiRateMap.set(ip, { count: 1, resetAt: now + 60_000 }); return next(); }
+  if (rec.count >= 300) return res.status(429).json({ error: { message: 'Too many requests', code: 'RATE_LIMITED' } });
+  rec.count++;
+  next();
+}
+
+const HTML_CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; frame-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'";
+
+function sendHtml(res, filePath) {
+  res.setHeader('Content-Security-Policy', HTML_CSP);
+  res.sendFile(filePath);
+}
+
 // Static files (favicon)
 app.use('/public', express.static(join(__dirname, '..', 'public')));
-app.use('/docs', express.static(join(__dirname, '..', 'docs')));
+app.use('/docs', express.static(join(__dirname, '..', 'docs'), {
+  setHeaders(res, filePath) {
+    if (filePath.endsWith('.html')) res.setHeader('Content-Security-Policy', HTML_CSP);
+  },
+}));
 app.get('/favicon.svg', (req, res) => res.sendFile(join(__dirname, '..', 'public', 'favicon.svg')));
 
 // Serve app icons publicly (no auth required — needed by login page and iframe topbar)
@@ -415,6 +439,7 @@ app.get('/api/self-update/status', requireAuth, requireAdmin, (req, res) => {
 });
 
 // API Routes
+app.use('/api', apiRateLimit);
 app.use('/api/auth', authRoutes);
 app.use('/api/auth/oidc', oidcRoutes);
 app.use('/api/auth/saml', samlRoutes);
@@ -442,25 +467,25 @@ app.use('/api/settings', settingsRoutes); // General settings (branding, etc.)
 app.use('/api/presence', presenceRoutes);
 
 // Login page
-app.get('/login', (req, res) => res.sendFile(join(__dirname, '..', 'docs', 'login.html')));
+app.get('/login', (req, res) => sendHtml(res, join(__dirname, '..', 'docs', 'login.html')));
 
 // Dashboard (admin)
-app.get('/dashboard', (req, res) => res.sendFile(join(__dirname, '..', 'docs', 'dashboard.html')));
-app.get('/applications', (req, res) => res.sendFile(join(__dirname, '..', 'docs', 'applications.html')));
-app.get('/users-page', (req, res) => res.sendFile(join(__dirname, '..', 'docs', 'users-page.html')));
-app.get('/audit-page', (req, res) => res.sendFile(join(__dirname, '..', 'docs', 'audit-page.html')));
-app.get('/enhancements-page', (req, res) => res.sendFile(join(__dirname, '..', 'docs', 'enhancements-page.html')));
-app.get('/appstudio', (req, res) => res.sendFile(join(__dirname, '..', 'docs', 'appstudio.html')));
-app.get('/settings', (req, res) => res.sendFile(join(__dirname, '..', 'docs', 'settings.html')));
+app.get('/dashboard', (req, res) => sendHtml(res, join(__dirname, '..', 'docs', 'dashboard.html')));
+app.get('/applications', (req, res) => sendHtml(res, join(__dirname, '..', 'docs', 'applications.html')));
+app.get('/users-page', (req, res) => sendHtml(res, join(__dirname, '..', 'docs', 'users-page.html')));
+app.get('/audit-page', (req, res) => sendHtml(res, join(__dirname, '..', 'docs', 'audit-page.html')));
+app.get('/enhancements-page', (req, res) => sendHtml(res, join(__dirname, '..', 'docs', 'enhancements-page.html')));
+app.get('/appstudio', (req, res) => sendHtml(res, join(__dirname, '..', 'docs', 'appstudio.html')));
+app.get('/settings', (req, res) => sendHtml(res, join(__dirname, '..', 'docs', 'settings.html')));
 
 // App manager (app user)
-app.get('/app', (req, res) => res.sendFile(join(__dirname, '..', 'docs', 'app.html')));
+app.get('/app', (req, res) => sendHtml(res, join(__dirname, '..', 'docs', 'app.html')));
 
 // Root redirects to login
 app.get('/', (req, res) => res.redirect('/login'));
 
 // Docs page
-app.get('/docs', (req, res) => res.sendFile(join(__dirname, '..', 'docs', 'index.html')));
+app.get('/docs', (req, res) => sendHtml(res, join(__dirname, '..', 'docs', 'index.html')));
 
 // Agent guide
 app.get('/agent-guide', (req, res) => { res.type('text/markdown'); res.sendFile(join(__dirname, '..', 'AGENT_GUIDE.md')); });

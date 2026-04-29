@@ -17,9 +17,12 @@ router.get('/me', requireAuth, (req, res) => {
   if (role === 'user') {
     apps = db.prepare(`
       SELECT a.slug, a.name, a.domain FROM apps a
-      JOIN app_users au ON a.id = au.app_id
-      WHERE au.user_id = ?
-    `).all(id);
+      WHERE a.id IN (
+        SELECT app_id FROM app_users WHERE user_id = ?
+        UNION
+        SELECT app_id FROM app_user_roles WHERE user_id = ?
+      )
+    `).all(id, id);
   } else {
     apps = db.prepare('SELECT slug, name, domain FROM apps').all();
   }
