@@ -1,6 +1,6 @@
 {
   "name": "appcrane",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "description": "AppCrane - Self-hosted deployment manager. CLI + REST API.",
   "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",

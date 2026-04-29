@@ -521,7 +521,10 @@ function showApps(data) {
     }
 
     envs.appendChild(makeEnvBtn(prodUrl, 'Production', '', a.prod_down, a.prod_status));
-    envs.appendChild(makeEnvBtn(sandUrl, 'Sandbox', 'dev', a.sand_down, a.sand_status));
+    // Sandbox is only accessible to app admins
+    if ((a.app_role || a.role) === 'admin') {
+      envs.appendChild(makeEnvBtn(sandUrl, 'Sandbox', 'dev', a.sand_down, a.sand_status));
+    }
 
     card.appendChild(envs);
 

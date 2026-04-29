@@ -195,6 +195,9 @@ router.put('/:slug/roles', requireAdmin, auditMiddleware('app-set-role'), (req, 
     ON CONFLICT(app_id, user_id) DO UPDATE SET app_role = excluded.app_role
   `).run(app.id, user_id, app_role);
 
+  // Keep app_users in sync so API-key based flows also see this user's apps
+  db.prepare('INSERT OR IGNORE INTO app_users (app_id, user_id) VALUES (?, ?)').run(app.id, user_id);
+
   res.json({ message: `Role '${app_role}' set for user ${user_id} on app ${app.slug}` });
 });
 

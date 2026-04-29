@@ -28,10 +28,13 @@ router.get('/', (req, res) => {
   } else {
     apps = db.prepare(`
       SELECT a.* FROM apps a
-      JOIN app_users au ON a.id = au.app_id
-      WHERE au.user_id = ?
+      WHERE a.id IN (
+        SELECT app_id FROM app_users WHERE user_id = ?
+        UNION
+        SELECT app_id FROM app_user_roles WHERE user_id = ?
+      )
       ORDER BY a.created_at DESC
-    `).all(req.user.id);
+    `).all(req.user.id, req.user.id);
   }
 
   // Enrich with ports and health status
