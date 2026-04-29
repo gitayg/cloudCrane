@@ -55,7 +55,7 @@ export async function startApp({ slug, env, image, hostPort, envVars = {}, volum
     '--label', APPCRANE_LABEL,
     '--label', `slug=${slug}`,
     '--label', `env=${env}`,
-    '--restart=unless-stopped',
+    '--restart=on-failure:5',
     `--memory=${memoryMb}m`,
     `--cpus=${cpus}`,
     '-p', `127.0.0.1:${hostPort}:${CONTAINER_PORT}`,

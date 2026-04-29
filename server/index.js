@@ -575,12 +575,18 @@ app.listen(PORT, HOST, async () => {
       // Docker not installed or daemon down — skip auto-heal
       throw new Error('docker ps unavailable');
     }
+    // Only consider apps whose MOST RECENT deployment per env is 'live' AND
+    // was deployed >5min ago. If the latest deploy failed, or was just attempted,
+    // don't redeploy — same code → same failure → CPU drain.
     const liveDeploys = db.prepare(`
-      SELECT a.*, d.env AS deploy_env
+      SELECT a.*, d.env AS deploy_env, d.finished_at AS deploy_finished_at
       FROM apps a
       JOIN deployments d ON d.app_id = a.id
-      WHERE d.status = 'live'
-      GROUP BY a.id, d.env
+      WHERE d.id = (
+        SELECT MAX(id) FROM deployments WHERE app_id = a.id AND env = d.env
+      )
+      AND d.status = 'live'
+      AND (strftime('%s', 'now') - strftime('%s', COALESCE(d.finished_at, d.started_at))) > 300
     `).all();
     const missing = liveDeploys.filter(r => !runningSet.has(`appcrane-${r.slug}-${r.deploy_env}`));
     if (missing.length > 0) {
