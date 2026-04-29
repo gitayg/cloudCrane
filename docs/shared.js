@@ -125,6 +125,9 @@ function sidebar(active) {
           '<a href="/agent-guide" style="color:var(--dim);text-decoration:none">Agent Guide</a>' +
           '<button class="btn" onclick="setKey(\'\');location.href=\'/dashboard\'" style="font-size:.72rem;padding:2px 8px;margin-left:auto">Logout</button>' +
         '</div>' +
+        '<div class="sidebar-kbd-hint" onclick="openCmdPalette()" title="Command palette">' +
+          '<kbd>⌘K</kbd><span>Search</span>' +
+        '</div>' +
       '</div>' +
     '</aside>';
 }
@@ -315,3 +318,139 @@ function checkAuth() {
   }
   return true;
 }
+
+// ── Command palette (⌘K / Ctrl+K) ────────────────────────────────────────
+var _cmdOpen = false, _cmdApps = null, _cmdIdx = 0, _cmdFiltered = [];
+
+function _cmdItems() {
+  var nav = [
+    {g:'Navigation',icon:'⊞',label:'Dashboard',href:'/dashboard'},
+    {g:'Navigation',icon:'▣',label:'Applications',href:'/applications'},
+    {g:'Navigation',icon:'✦',label:'AppStudio',href:'/appstudio'},
+    {g:'Navigation',icon:'◉',label:'Users',href:'/users-page'},
+    {g:'Navigation',icon:'≡',label:'Audit Log',href:'/audit-page'},
+    {g:'Navigation',icon:'⚙',label:'Settings',href:'/settings'},
+  ];
+  var app = [], act = [];
+  (_cmdApps || []).forEach(function(a) {
+    var n = a.display_name || a.name;
+    app.push({g:'Apps',icon:'▸',label:n,desc:a.slug,href:'/applications'});
+    act.push({g:'Actions',icon:'▲',label:'Deploy '+n+' → sandbox',desc:a.slug,
+      run:(function(slug,name){return async function(){
+        var r = await apiPost('/api/apps/'+slug+'/deploy/sandbox',{});
+        _cmdToast(r&&r.error?'✗ '+(r.error.message||'failed'):'✓ Deploy queued — '+name,
+          r&&r.error?'var(--red)':'var(--green)');
+      };})(a.slug,n)});
+    act.push({g:'Actions',icon:'✦',label:'AppStudio: enhance '+n,desc:a.slug,href:'/appstudio'});
+  });
+  return nav.concat(app).concat(act);
+}
+
+function _cmdScore(item,q) {
+  var l=item.label.toLowerCase(), d=(item.desc||'').toLowerCase();
+  if(l===q) return 100;
+  if(l.startsWith(q)) return 90;
+  if(d===q||d.startsWith(q)) return 85;
+  if(l.includes(q)) return 70;
+  if(d.includes(q)) return 55;
+  var ws=l.split(/\s+/);
+  for(var i=0;i<ws.length;i++) if(ws[i].startsWith(q)) return 80;
+  return 0;
+}
+
+function _cmdRender(query) {
+  var all=_cmdItems(), q=(query||'').trim().toLowerCase(), filtered;
+  if(!q) {
+    filtered=all.filter(function(i){return i.g==='Navigation';})
+      .concat(all.filter(function(i){return i.g==='Apps';}).slice(0,6));
+  } else {
+    filtered=all.map(function(i){return{i,s:_cmdScore(i,q)};})
+      .filter(function(x){return x.s>0;})
+      .sort(function(a,b){return b.s-a.s;})
+      .map(function(x){return x.i;}).slice(0,14);
+  }
+  _cmdFiltered=filtered; _cmdIdx=0;
+  var el=document.getElementById('cmdResults');
+  el.innerHTML='';
+  if(!filtered.length){el.innerHTML='<div class="cmd-empty">No results</div>';return;}
+  var groups={},order=[];
+  filtered.forEach(function(item,idx){
+    if(!groups[item.g]){groups[item.g]=[];order.push(item.g);}
+    groups[item.g].push({item,idx});
+  });
+  order.forEach(function(gname){
+    var gl=document.createElement('div');gl.className='cmd-group-label';gl.textContent=gname;el.appendChild(gl);
+    groups[gname].forEach(function(e){
+      var div=document.createElement('div');
+      div.className='cmd-item'+(e.idx===0?' cmd-active':'');
+      div.dataset.idx=e.idx;
+      var ic=document.createElement('span');ic.className='cmd-item-icon';ic.textContent=e.item.icon;
+      var lb=document.createElement('span');lb.className='cmd-item-label';lb.textContent=e.item.label;
+      var kb=document.createElement('span');kb.className='cmd-item-kbd';kb.textContent='↵';
+      div.appendChild(ic);div.appendChild(lb);
+      if(e.item.desc){var dc=document.createElement('span');dc.className='cmd-item-desc';dc.textContent=e.item.desc;div.appendChild(dc);}
+      div.appendChild(kb);
+      div.addEventListener('mouseenter',function(){_cmdIdx=parseInt(this.dataset.idx);_cmdActivate();});
+      div.addEventListener('click',function(){_cmdExec(_cmdFiltered[parseInt(this.dataset.idx)]);});
+      el.appendChild(div);
+    });
+  });
+}
+
+function _cmdActivate() {
+  document.querySelectorAll('.cmd-item').forEach(function(el,i){el.classList.toggle('cmd-active',i===_cmdIdx);});
+  var a=document.querySelector('.cmd-item.cmd-active');if(a)a.scrollIntoView({block:'nearest'});
+}
+
+function _cmdExec(item) {
+  closeCmdPalette();
+  if(item.run) item.run();
+  else if(item.href) location.href=item.href;
+}
+
+function _cmdToast(msg,color) {
+  var t=document.createElement('div');t.className='cmd-toast';
+  t.style.color=color||'var(--text)';t.textContent=msg;
+  document.body.appendChild(t);setTimeout(function(){t.remove();},3000);
+}
+
+function closeCmdPalette() {
+  _cmdOpen=false;
+  var ov=document.getElementById('cmdOverlay');if(ov)ov.style.display='none';
+}
+
+function openCmdPalette() {
+  _cmdOpen=true;
+  var ov=document.getElementById('cmdOverlay');
+  if(!ov){
+    ov=document.createElement('div');ov.id='cmdOverlay';ov.className='cmd-overlay';
+    ov.innerHTML='<div class="cmd-box">'+
+      '<div class="cmd-input-row">'+
+        '<span class="cmd-input-icon">⌘K</span>'+
+        '<input id="cmdInput" class="cmd-input" placeholder="Search apps and actions…" autocomplete="off" spellcheck="false">'+
+        '<span class="cmd-esc-hint" onclick="closeCmdPalette()">ESC</span>'+
+      '</div>'+
+      '<div id="cmdResults" class="cmd-results"></div>'+
+    '</div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click',function(e){if(e.target===ov)closeCmdPalette();});
+    document.getElementById('cmdInput').addEventListener('input',function(){_cmdRender(this.value);});
+    document.getElementById('cmdInput').addEventListener('keydown',function(e){
+      if(e.key==='ArrowDown'){e.preventDefault();_cmdIdx=Math.min(_cmdIdx+1,_cmdFiltered.length-1);_cmdActivate();}
+      else if(e.key==='ArrowUp'){e.preventDefault();_cmdIdx=Math.max(_cmdIdx-1,0);_cmdActivate();}
+      else if(e.key==='Enter'&&_cmdFiltered[_cmdIdx]){_cmdExec(_cmdFiltered[_cmdIdx]);}
+    });
+  } else {
+    ov.style.display='flex';
+  }
+  var inp=document.getElementById('cmdInput');inp.value='';inp.focus();
+  if(_cmdApps===null&&typeof apiFetch==='function'&&KEY){
+    apiFetch('/api/apps').then(function(d){_cmdApps=d.apps||[];_cmdRender('');}).catch(function(){_cmdApps=[];});
+  }
+  _cmdRender('');
+}
+
+document.addEventListener('keydown',function(e){
+  if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();if(_cmdOpen)closeCmdPalette();else openCmdPalette();}
+  else if(e.key==='Escape'&&_cmdOpen){closeCmdPalette();}
+});
