@@ -457,6 +457,7 @@ app.use('/api/identity', identityRoutes);
 app.use('/api/enhancements', enhancementsRoutes); // Enhancement requests (Bearer auth, must be before logsRoutes)
 app.use('/api/appstudio', appstudioRoutes); // AppStudio plan/code/build pipeline
 app.use('/api/webhooks', webhooksRoutes); // Public webhook endpoint (no auth — must be before logsRoutes)
+app.use('/api/presence', presenceRoutes); // Bearer auth (identity) — must be before logsRoutes (which installs X-API-Key requireAuth at /api)
 
 app.use('/api', logsRoutes);             // /api/audit, /api/apps/:slug/audit
 app.use('/api', monitoringRoutes);       // /api/server/health
@@ -464,7 +465,6 @@ app.use('/api/users', usersRoutes);
 app.use('/api/apps', webhooksRoutes);     // /api/apps/:slug/webhook config
 app.use('/api/apps', usersRoutes);        // /api/apps/:slug/roles, /api/apps/:slug/identity/users (admin)
 app.use('/api/settings', settingsRoutes); // General settings (branding, etc.)
-app.use('/api/presence', presenceRoutes);
 
 // Login page
 app.get('/login', (req, res) => sendHtml(res, join(__dirname, '..', 'docs', 'login.html')));
