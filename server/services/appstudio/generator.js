@@ -164,7 +164,7 @@ try {
   console.log('[studio] Done — ' + branch);
 } catch (_) {
   // Check if this is AppCrane's own branch from a prior attempt (orphan recovery retry)
-  var ownBranch = /^appstudio\//.test(branch);
+  var ownBranch = branch.indexOf('appstudio/') === 0;
   if (ownBranch) {
     console.log('[studio] Remote branch exists from prior attempt — force-pushing…');
     run('git', ['push', '--force', '-u', 'origin', branch]);
