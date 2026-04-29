@@ -75,23 +75,8 @@ export async function reconcileOrphanedApps({ dryRun = false, dataDir } = {}) {
     slugInfo[slug].processes[c.env] = { status: c.status };
   }
 
-  // ── Collect slugs from filesystem (only dirs that look like real apps) ────
-  const appsDir = join(DATA_DIR, 'apps');
-  if (existsSync(appsDir)) {
-    for (const entry of readdirSync(appsDir, { withFileTypes: true })) {
-      if (!entry.isDirectory() || slugInfo[entry.name]) continue;
-      const slug = entry.name;
-      const appPath = join(appsDir, slug);
-      const hasDeployableEnv = ENVS.some(env => {
-        const current = join(appPath, env, 'current');
-        if (!existsSync(current)) return false;
-        return existsSync(join(current, 'package.json')) || existsSync(join(current, 'deployhub.json'));
-      });
-      if (hasDeployableEnv) {
-        slugInfo[slug] = { processes: {}, fromFs: true };
-      }
-    }
-  }
+  // Only running Docker containers count as orphans — not stale filesystem dirs.
+  // Old data/apps/ directories from pre-Docker installs are just leftover data.
 
   // ── Cross-reference against DB ────────────────────────────────────────────
   const existingSlugs = new Set(db.prepare('SELECT slug FROM apps').all().map(r => r.slug));
@@ -174,18 +159,7 @@ export function getOrphanedSlugs(dataDir) {
     if (slug && !existingSlugs.has(slug)) found.add(slug);
   }
 
-  const appsDir = join(DATA_DIR, 'apps');
-  if (existsSync(appsDir)) {
-    for (const entry of readdirSync(appsDir, { withFileTypes: true })) {
-      if (!entry.isDirectory() || existingSlugs.has(entry.name)) continue;
-      const hasDeployable = ENVS.some(env => {
-        const current = join(appsDir, entry.name, env, 'current');
-        if (!existsSync(current)) return false;
-        return existsSync(join(current, 'package.json')) || existsSync(join(current, 'deployhub.json'));
-      });
-      if (hasDeployable) found.add(entry.name);
-    }
-  }
-
+  // Only Docker containers count as orphans (they're actually running but untracked).
+  // Stale filesystem dirs in data/apps/ are just old data — not actionable.
   return [...found];
 }
