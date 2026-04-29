@@ -118,7 +118,7 @@ async function ensureSessionContainer(sessionId, app, onLog) {
   log.info(`AskClaude: starting session container ${containerName}`);
 
   // Write token URL to a file — never put it in an env var (would persist in /proc/environ)
-  writeFileSync(join(dir, 'clone_url'), cloneUrl, { mode: 0o600 }); // nosemgrep
+  writeFileSync(join(dir, 'clone_url'), cloneUrl, { mode: 0o644 }); // nosemgrep: container runs as non-root, needs read access
 
   // Clone, strip remote, disable credential helper — ask containers cannot commit or push
   execFileSync('docker', [
@@ -138,7 +138,7 @@ async function ensureSessionContainer(sessionId, app, onLog) {
   await waitForWorkspace(containerName, onLog);
 
   // Clear the token from the mounted file — clone is done, container no longer needs it
-  writeFileSync(join(dir, 'clone_url'), '', { mode: 0o600 }); // nosemgrep
+  writeFileSync(join(dir, 'clone_url'), '', { mode: 0o644 }); // nosemgrep
 
   const session = { containerName, dir, idleTimer: null, maxTimer: null };
   session.maxTimer = setTimeout(() => stopSession(sessionId), MAX_SESSION_MS);
