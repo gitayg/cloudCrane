@@ -128,12 +128,17 @@ async function handlePlan(job) {
     }
   };
 
+  const onTokens = (total) => {
+    db.prepare('UPDATE enhancement_jobs SET cost_tokens = ? WHERE id = ?').run(total, job.id);
+  };
+
   const result = await planEnhancement({
     request: enh.message,
     repoDir,
     agentContext,
     priorComments,
     onChunk,
+    onTokens,
   });
 
   const costCents = Math.ceil(result.costUsd * 100);
@@ -175,8 +180,29 @@ async function handleCode(job) {
 
   const agentContext = getAgentContext(app.slug);
   const logLines = [];
+  let codeOutputTokens = 0;
+  let codeLastInputTokens = 0;
+
   const onLog = (line) => {
     logLines.push(line);
+
+    // Parse Claude Code stream-json events for real-time token tracking
+    try {
+      const evt = JSON.parse(line);
+      if (evt.type === 'result' && evt.usage) {
+        const tokens = (evt.usage.input_tokens || 0) + (evt.usage.output_tokens || 0);
+        const cents = evt.total_cost_usd ? Math.ceil(evt.total_cost_usd * 100) : 0;
+        db.prepare('UPDATE enhancement_jobs SET cost_tokens = ?, cost_usd_cents = ? WHERE id = ?')
+          .run(tokens, cents, job.id);
+      } else if (evt.type === 'assistant' && evt.message?.usage) {
+        const u = evt.message.usage;
+        codeOutputTokens += (u.output_tokens || 0);
+        codeLastInputTokens = u.input_tokens || 0;
+        db.prepare('UPDATE enhancement_jobs SET cost_tokens = ? WHERE id = ?')
+          .run(codeLastInputTokens + codeOutputTokens, job.id);
+      }
+    } catch (_) {}
+
     if (logLines.length % 20 === 0) {
       db.prepare('UPDATE enhancement_jobs SET output_json = ? WHERE id = ?')
         .run(JSON.stringify({ log: logLines.slice(-100) }), job.id);

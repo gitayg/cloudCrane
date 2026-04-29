@@ -344,6 +344,14 @@ async function showDetail(id) {
       if (j.error) {
         var err = document.createElement('span'); err.className = 'trace-err'; err.textContent = j.error; bh.appendChild(jtag); bh.appendChild(ph); bh.appendChild(st); bh.appendChild(err); bh.appendChild(timing);
       } else { bh.appendChild(jtag); bh.appendChild(ph); bh.appendChild(st); bh.appendChild(timing); }
+      if (j.cost_tokens > 0) {
+        var tokBadge = document.createElement('span');
+        tokBadge.style.cssText = 'font-size:.68rem;color:var(--dim);font-family:monospace;white-space:nowrap;flex-shrink:0;padding:1px 5px;background:var(--bg);border:1px solid var(--border);border-radius:3px';
+        var tokStr = j.cost_tokens.toLocaleString() + '\u202ftok';
+        if (j.cost_usd_cents > 0) tokStr += '\u2009·\u2009$' + (j.cost_usd_cents / 100).toFixed(3);
+        tokBadge.textContent = tokStr;
+        bh.appendChild(tokBadge);
+      }
       if (j.status === 'failed') {
         var retBtn = document.createElement('button');
         retBtn.textContent = 'Retry'; retBtn.style.cssText = 'margin-left:8px;font-size:.7rem;padding:2px 8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px;cursor:pointer;flex-shrink:0';

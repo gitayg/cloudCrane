@@ -164,6 +164,8 @@ router.get('/:id/trace', (req, res) => {
       log: output?.log || null,
       text: output?.text || null,
       branch: output?.branchName || null,
+      cost_tokens: j.cost_tokens || 0,
+      cost_usd_cents: j.cost_usd_cents || 0,
     };
   });
 

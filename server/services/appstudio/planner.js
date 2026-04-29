@@ -111,7 +111,7 @@ function extractJsonBlock(text) {
   return null;
 }
 
-export async function planEnhancement({ request, repoDir, agentContext, priorComments, onChunk }) {
+export async function planEnhancement({ request, repoDir, agentContext, priorComments, onChunk, onTokens }) {
   const repoTree = getRepoTree(repoDir);
   const keywords = extractKeywords(request + ' ' + (priorComments || ''));
   const relevantPaths = grepRelevantFiles(repoDir, keywords);
@@ -130,6 +130,7 @@ export async function planEnhancement({ request, repoDir, agentContext, priorCom
   log.info(`AppStudio plan: ${MODEL}, ${relevantPaths.length} files in context`);
 
   let fullText = '';
+  let streamInputTokens = 0, streamOutputTokens = 0;
   const stream = client().messages.stream({
     model: MODEL,
     max_tokens: 4096,
@@ -138,7 +139,13 @@ export async function planEnhancement({ request, repoDir, agentContext, priorCom
   });
 
   for await (const event of stream) {
-    if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+    if (event.type === 'message_start' && event.message?.usage) {
+      streamInputTokens = event.message.usage.input_tokens || 0;
+      onTokens?.(streamInputTokens + streamOutputTokens);
+    } else if (event.type === 'message_delta' && event.usage) {
+      streamOutputTokens = event.usage.output_tokens || 0;
+      onTokens?.(streamInputTokens + streamOutputTokens);
+    } else if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
       fullText += event.delta.text;
       onChunk?.(fullText);
     }
