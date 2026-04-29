@@ -140,21 +140,36 @@ router.get('/session/:sessionId', (req, res) => {
   res.json({ session, messages });
 });
 
-// GET /api/ask/jobs — active AppStudio enhancement jobs (admin only via Bearer)
+// GET /api/ask/jobs — active jobs + user's own requests (Bearer auth)
 router.get('/jobs', (req, res) => {
   const user = resolveUser(req);
   if (!user) throw new AppError('Authentication required', 401, 'UNAUTHORIZED');
-  if (user.role !== 'admin') throw new AppError('Admin required', 403, 'FORBIDDEN');
-  const jobs = getDb().prepare(`
-    SELECT j.id, j.phase, j.status, j.created_at, j.finished_at,
-           er.message as enhancement_message, er.app_slug
-    FROM enhancement_jobs j
-    JOIN enhancement_requests er ON er.id = j.enhancement_id
-    WHERE j.status IN ('queued', 'running')
-    ORDER BY j.id DESC
-    LIMIT 30
-  `).all();
-  res.json({ jobs });
+  const db = getDb();
+
+  const my_requests = db.prepare(`
+    SELECT er.id, er.app_slug, er.message, er.status, er.created_at,
+           j.phase, j.status as job_status
+    FROM enhancement_requests er
+    LEFT JOIN enhancement_jobs j ON j.enhancement_id = er.id AND j.status IN ('queued', 'running')
+    WHERE er.user_id = ?
+    ORDER BY er.created_at DESC
+    LIMIT 20
+  `).all(user.userId);
+
+  let active_jobs = [];
+  if (user.role === 'admin') {
+    active_jobs = db.prepare(`
+      SELECT j.id, j.phase, j.status, j.created_at,
+             er.message as enhancement_message, er.app_slug, er.user_name
+      FROM enhancement_jobs j
+      JOIN enhancement_requests er ON er.id = j.enhancement_id
+      WHERE j.status IN ('queued', 'running')
+      ORDER BY j.id DESC
+      LIMIT 30
+    `).all();
+  }
+
+  res.json({ active_jobs, my_requests });
 });
 
 export default router;

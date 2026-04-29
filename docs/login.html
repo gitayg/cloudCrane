@@ -955,10 +955,8 @@ function openApp(url, name, slug, hasIcon) {
   if (hasIcon && slug) {
     icon.src = window.location.origin + '/api/apps/' + slug + '/icon';
   }
-  if (currentUser && currentUser.role === 'admin') {
-    document.getElementById('jobsBtn').style.display = '';
-    refreshJobsBadge();
-  }
+  document.getElementById('jobsBtn').style.display = '';
+  refreshJobsBadge();
 }
 
 function closeApp() {
@@ -1575,42 +1573,68 @@ function closeJobsPanel() {
   if (_jobsPollTimer) { clearInterval(_jobsPollTimer); _jobsPollTimer = null; }
 }
 
+function _makeJobRow(slug, label, statusText, statusClass, message) {
+  const row = document.createElement('div');
+  row.className = 'job-row';
+  const top = document.createElement('div');
+  top.className = 'job-row-top';
+  const slugEl = document.createElement('span');
+  slugEl.className = 'job-slug';
+  slugEl.textContent = slug || '';
+  const labelEl = document.createElement('span');
+  labelEl.className = 'job-phase';
+  labelEl.textContent = label || '';
+  const statusEl = document.createElement('span');
+  statusEl.className = statusClass;
+  statusEl.textContent = statusText || '';
+  top.appendChild(slugEl); top.appendChild(labelEl); top.appendChild(statusEl);
+  const msg = document.createElement('div');
+  msg.className = 'job-msg';
+  msg.textContent = message || '';
+  row.appendChild(top); row.appendChild(msg);
+  return row;
+}
+
 async function refreshJobsList() {
   try {
     const r = await fetch(API + '/api/ask/jobs', { headers: { 'Authorization': 'Bearer ' + sessionToken } });
     const d = await r.json();
-    const jobs = d.jobs || [];
+    const activeJobs = d.active_jobs || [];
+    const myReqs = d.my_requests || [];
+    const activeCount = activeJobs.length + myReqs.filter(function(r) { return r.job_status === 'queued' || r.job_status === 'running'; }).length;
     const badge = document.getElementById('jobsBadge');
-    if (jobs.length > 0) { badge.textContent = jobs.length; badge.classList.add('has-jobs'); }
+    if (activeCount > 0) { badge.textContent = activeCount; badge.classList.add('has-jobs'); }
     else { badge.classList.remove('has-jobs'); }
+
     const list = document.getElementById('jobsList');
     if (!document.getElementById('jobsPanel').classList.contains('open')) return;
-    if (!jobs.length) { list.innerHTML = '<div class="jobs-empty">No active jobs</div>'; return; }
     list.innerHTML = '';
-    jobs.forEach(function(j) {
-      const row = document.createElement('div');
-      row.className = 'job-row';
-      const top = document.createElement('div');
-      top.className = 'job-row-top';
-      const slug = document.createElement('span');
-      slug.className = 'job-slug';
-      slug.textContent = j.app_slug;
-      const phase = document.createElement('span');
-      phase.className = 'job-phase';
-      phase.textContent = j.phase;
-      const status = document.createElement('span');
-      status.className = j.status === 'running' ? 'job-status-running' : 'job-status-queued';
-      status.textContent = j.status;
-      top.appendChild(slug);
-      top.appendChild(phase);
-      top.appendChild(status);
-      const msg = document.createElement('div');
-      msg.className = 'job-msg';
-      msg.textContent = j.enhancement_message || '';
-      row.appendChild(top);
-      row.appendChild(msg);
-      list.appendChild(row);
-    });
+
+    if (activeJobs.length > 0) {
+      const hdr = document.createElement('div');
+      hdr.style.cssText = 'padding:6px 14px 2px;font-size:.68rem;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;font-weight:600';
+      hdr.textContent = 'Active (all users)';
+      list.appendChild(hdr);
+      activeJobs.forEach(function(j) {
+        list.appendChild(_makeJobRow(j.app_slug, j.phase, j.status, j.status === 'running' ? 'job-status-running' : 'job-status-queued', j.enhancement_message));
+      });
+    }
+
+    if (myReqs.length > 0) {
+      const hdr = document.createElement('div');
+      hdr.style.cssText = 'padding:6px 14px 2px;font-size:.68rem;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-top:4px';
+      hdr.textContent = 'My Requests';
+      list.appendChild(hdr);
+      myReqs.forEach(function(req) {
+        const statusMap = { new: 'job-status-queued', selected: 'job-status-queued', planning: 'job-status-running', pending_user_review_plan: 'job-status-running', plan_approved: 'job-status-running', coding: 'job-status-running', sandbox_ready: 'job-status-queued', done: '', merged: '' };
+        const cls = statusMap[req.status] || 'job-status-queued';
+        list.appendChild(_makeJobRow(req.app_slug, req.phase || req.status, req.status, cls, req.message));
+      });
+    }
+
+    if (!activeJobs.length && !myReqs.length) {
+      list.innerHTML = '<div class="jobs-empty">No requests yet</div>';
+    }
   } catch (_) {}
 }
 
@@ -1618,9 +1642,11 @@ async function refreshJobsBadge() {
   try {
     const r = await fetch(API + '/api/ask/jobs', { headers: { 'Authorization': 'Bearer ' + sessionToken } });
     const d = await r.json();
-    const jobs = d.jobs || [];
+    const activeJobs = d.active_jobs || [];
+    const myReqs = d.my_requests || [];
+    const count = activeJobs.length + myReqs.filter(function(r) { return r.job_status === 'queued' || r.job_status === 'running'; }).length;
     const badge = document.getElementById('jobsBadge');
-    if (jobs.length > 0) { badge.textContent = jobs.length; badge.classList.add('has-jobs'); }
+    if (count > 0) { badge.textContent = count; badge.classList.add('has-jobs'); }
     else { badge.classList.remove('has-jobs'); }
   } catch (_) {}
 }
