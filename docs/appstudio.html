@@ -178,7 +178,8 @@ function msGap(a, b) {
 
 async function delRequest(id) {
   if (!confirm('Delete this enhancement request?')) return;
-  await apiPost('/api/enhancements/' + id + '/delete', {});
+  var result = await apiPost('/api/enhancements/' + id + '/delete', {});
+  if (result && result.error) { alert('Delete failed: ' + (result.error.message || JSON.stringify(result.error))); return; }
   allEnhancements = allEnhancements.filter(function(r) { return r.id !== id; });
   renderTab();
 }

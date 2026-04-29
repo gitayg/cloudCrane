@@ -147,6 +147,7 @@ router.post('/:id/delete', requireAuth, requireAdmin, (req, res) => {
   const id = parseInt(req.params.id, 10);
   const row = db.prepare('SELECT id FROM enhancement_requests WHERE id = ?').get(id);
   if (!row) throw new AppError('Not found', 404, 'NOT_FOUND');
+  db.prepare('DELETE FROM enhancement_jobs WHERE enhancement_id = ?').run(id);
   db.prepare('DELETE FROM enhancement_requests WHERE id = ?').run(id);
   res.json({ message: 'Deleted' });
 });
