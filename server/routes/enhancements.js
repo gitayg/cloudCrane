@@ -70,6 +70,14 @@ router.post('/', (req, res) => {
       db.prepare("UPDATE enhancement_requests SET status = 'planning' WHERE id = ?").run(lastInsertRowid);
     }
     db.prepare('INSERT INTO enhancement_jobs (enhancement_id, phase) VALUES (?, ?)').run(lastInsertRowid, 'plan');
+  } else {
+    // Surface the missing-key state instead of silently leaving the request
+    // stuck on 'new' with no job — the dashboard would otherwise show a
+    // forever-spinner. The job's failed status + error_message is what the
+    // /api/enhancements list response renders.
+    db.prepare(
+      "INSERT INTO enhancement_jobs (enhancement_id, phase, status, error_message, finished_at) VALUES (?, 'plan', 'failed', ?, datetime('now'))"
+    ).run(lastInsertRowid, 'ANTHROPIC_API_KEY not configured');
   }
 
   res.json({ message: 'Enhancement request submitted. Thank you!', enhancement_id: lastInsertRowid });
