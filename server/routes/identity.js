@@ -7,7 +7,8 @@ import { AppError } from '../utils/errors.js';
 import log from '../utils/logger.js';
 
 const ICON_DIR = resolve(process.env.DATA_DIR || './data', 'apps');
-const hasIcon = (slug) => existsSync(join(ICON_DIR, slug, 'icon.svg'));
+const ICON_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'];
+const hasIcon = (slug) => ICON_EXTS.some(ext => existsSync(join(ICON_DIR, slug, `icon.${ext}`)));
 
 const router = Router();
 
