@@ -80,11 +80,16 @@ input:focus{border-color:var(--accent)}
 .btn-enhance{background:none;color:var(--dim);border:1px solid var(--border);border-radius:5px;padding:4px 12px;cursor:pointer;font-size:.78rem;font-weight:500;width:auto;transition:border-color .15s,color .15s}
 .btn-enhance:hover{border-color:var(--accent);color:var(--accent)}
 .app-frame iframe{flex:1;border:none;background:#fff}
-.presence-wrap{display:flex;align-items:center;gap:4px}
+.presence-wrap{display:flex;align-items:center;gap:4px;position:relative;cursor:default}
 .presence-avatars{display:flex;align-items:center}
-.presence-avatar{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.58rem;font-weight:700;color:#fff;border:2px solid var(--surface);margin-left:-6px;flex-shrink:0;cursor:default}
+.presence-avatar{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.58rem;font-weight:700;color:#fff;border:2px solid var(--surface);margin-left:-6px;flex-shrink:0}
 .presence-avatars .presence-avatar:first-child{margin-left:0}
 .presence-label{font-size:.72rem;color:var(--dim);white-space:nowrap}
+.presence-tooltip{display:none;position:absolute;top:calc(100% + 8px);right:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 0;min-width:160px;z-index:50;box-shadow:0 4px 16px rgba(0,0,0,.4)}
+.presence-wrap:hover .presence-tooltip{display:block}
+.presence-tooltip-row{display:flex;align-items:center;gap:8px;padding:5px 12px;font-size:.8rem}
+.presence-tooltip-dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex-shrink:0}
+.presence-tooltip-title{font-size:.7rem;color:var(--dim);padding:4px 12px 2px;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
 
 /* Enhancement modal */
 .enh-overlay{display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.55);align-items:center;justify-content:center}
@@ -158,6 +163,9 @@ input:focus{border-color:var(--accent)}
       <div id="presenceWrap" class="presence-wrap" style="display:none">
         <div id="presenceAvatars" class="presence-avatars"></div>
         <span id="presenceLabel" class="presence-label"></span>
+        <div id="presenceTooltip" class="presence-tooltip">
+          <div class="presence-tooltip-title">Also viewing</div>
+        </div>
       </div>
       <span id="frameUserInfo" class="frame-user"></span>
       <button class="btn-enhance" onclick="openEnhModal()">💡 Request Enhancement</button>
@@ -677,23 +685,37 @@ function renderPresence(others) {
   const wrap = document.getElementById('presenceWrap');
   const avatarsEl = document.getElementById('presenceAvatars');
   const labelEl = document.getElementById('presenceLabel');
+  const tooltip = document.getElementById('presenceTooltip');
   avatarsEl.textContent = '';
   if (!others.length) { wrap.style.display = 'none'; return; }
   wrap.style.display = 'flex';
+
   const shown = others.slice(0, 4);
   shown.forEach(function(v) {
     const av = document.createElement('div');
     av.className = 'presence-avatar';
     av.style.background = colorFor(v.name);
-    av.title = v.name + ' is also here';
     av.textContent = initials(v.name);
     avatarsEl.appendChild(av);
   });
-  const extra = others.length - shown.length;
-  labelEl.textContent = others.length === 1
-    ? '1 other here'
-    : others.length + ' others here';
-  if (extra > 0) labelEl.textContent += ' (+' + extra + ')';
+
+  labelEl.textContent = others.length === 1 ? '1 other here' : others.length + ' others here';
+
+  // Rebuild tooltip rows (keep the title row, replace the rest)
+  const titleRow = tooltip.querySelector('.presence-tooltip-title');
+  tooltip.textContent = '';
+  tooltip.appendChild(titleRow);
+  others.forEach(function(v) {
+    const row = document.createElement('div');
+    row.className = 'presence-tooltip-row';
+    const dot = document.createElement('div');
+    dot.className = 'presence-tooltip-dot';
+    const name = document.createElement('span');
+    name.textContent = v.name;
+    row.appendChild(dot);
+    row.appendChild(name);
+    tooltip.appendChild(row);
+  });
 }
 
 function fmtDate(str) {

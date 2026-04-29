@@ -96,6 +96,7 @@ router.post('/login', (req, res) => {
   log.info(`Identity login: ${user.name} (${login})${app ? ' for app ' + app : ''}`);
 
   // Get all apps with this user's role and health state
+  const isAdmin = user.role === 'admin';
   const apps = db.prepare(`
     SELECT a.slug, a.name, a.domain, a.description, a.public_access,
       CASE WHEN a.public_access THEN 'viewer' ELSE COALESCE(aur.app_role, 'none') END as app_role,
@@ -106,7 +107,11 @@ router.post('/login', (req, res) => {
     LEFT JOIN health_state hp ON a.id = hp.app_id AND hp.env = 'production'
     LEFT JOIN health_state hs ON a.id = hs.app_id AND hs.env = 'sandbox'
     ORDER BY a.name
-  `).all(user.id).map(a => ({ ...a, has_icon: hasIcon(a.slug) }));
+  `).all(user.id).map(a => ({
+    ...a,
+    app_role: isAdmin && a.app_role === 'none' ? 'admin' : a.app_role,
+    has_icon: hasIcon(a.slug),
+  }));
 
   res.json({
     token,
@@ -284,6 +289,7 @@ router.get('/me', (req, res) => {
   if (!session) throw new AppError('Invalid or expired token', 401, 'INVALID_TOKEN');
 
   // Get all apps with roles and health state
+  const isAdmin = session.role === 'admin';
   const apps = db.prepare(`
     SELECT a.slug, a.name, a.domain, a.description, a.public_access,
       CASE WHEN a.public_access THEN 'viewer' ELSE COALESCE(aur.app_role, 'none') END as role,
@@ -294,7 +300,11 @@ router.get('/me', (req, res) => {
     LEFT JOIN health_state hp ON a.id = hp.app_id AND hp.env = 'production'
     LEFT JOIN health_state hs ON a.id = hs.app_id AND hs.env = 'sandbox'
     ORDER BY a.name
-  `).all(session.id).map(a => ({ ...a, has_icon: hasIcon(a.slug) }));
+  `).all(session.id).map(a => ({
+    ...a,
+    role: isAdmin && a.role === 'none' ? 'admin' : a.role,
+    has_icon: hasIcon(a.slug),
+  }));
 
   res.json({
     user: {
