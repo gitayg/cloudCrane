@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Create a Website with AppCrane</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<style>
+:root{--bg:#0f1117;--surface:#1a1d27;--border:#2a2d3a;--text:#e4e4e7;--dim:#71717a;--accent:#3b82f6;--green:#22c55e;--yellow:#eab308;--red:#ef4444;--code-bg:#1e2130}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);line-height:1.7;font-size:15px}
+.container{max-width:900px;margin:0 auto;padding:40px 20px}
+h1{font-size:2rem;margin-bottom:4px}
+h1 span{color:var(--accent)}
+.sub{color:var(--dim);margin-bottom:32px}
+h2{font-size:1.3rem;margin:40px 0 12px;color:var(--accent);border-bottom:1px solid var(--border);padding-bottom:6px}
+h3{font-size:1rem;margin:20px 0 6px;color:var(--text)}
+p,li{color:var(--dim);margin:4px 0}
+ul,ol{padding-left:20px}
+ol li{margin:8px 0}
+code{background:var(--code-bg);padding:1px 5px;border-radius:3px;font-size:.9em;font-family:'SF Mono',Monaco,monospace}
+pre{background:var(--code-bg);border:1px solid var(--border);border-radius:6px;padding:14px;overflow-x:auto;margin:8px 0;font-size:.85rem;line-height:1.5}
+pre code{background:none;padding:0}
+.g{color:var(--green)}.y{color:var(--yellow)}.r{color:var(--red)}.d{color:var(--dim)}.b{color:var(--accent)}
+.warn{background:#eab30811;border:1px solid #eab30844;border-radius:6px;padding:10px 14px;margin:8px 0;font-size:.9rem}
+.tip{background:#3b82f611;border:1px solid #3b82f644;border-radius:6px;padding:10px 14px;margin:8px 0;font-size:.9rem}
+.step{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;margin:16px 0}
+.step-num{display:inline-block;background:var(--accent);color:#fff;width:28px;height:28px;border-radius:50%;text-align:center;line-height:28px;font-weight:700;font-size:.85rem;margin-right:8px}
+table{width:100%;border-collapse:collapse;margin:8px 0;font-size:.9rem}
+th,td{padding:6px 10px;text-align:left;border-bottom:1px solid var(--border)}
+th{color:var(--dim);font-weight:500}
+.nav{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 20px;position:sticky;top:0;z-index:10;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.nav a{color:var(--dim);text-decoration:none;font-size:.85rem}.nav a:hover{color:var(--accent)}
+.nav .logo{font-weight:700;color:var(--text);font-size:1.1rem;margin-right:12px}
+.flow{display:flex;align-items:center;gap:12px;margin:16px 0;flex-wrap:wrap;font-size:.9rem}
+.flow .arrow{color:var(--dim);font-size:1.2rem}
+.flow .box{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 14px}
+</style>
+</head>
+<body>
+<nav class="nav">
+<a href="/" class="logo">App<span style="color:var(--accent)">Crane</span></a>
+<a href="/">API Reference</a>
+<a href="/guide" style="color:var(--accent)">Create a Website</a>
+<a href="/dashboard">Dashboard</a>
+</nav>
+<div class="container">
+
+<h1>Create a Website with App<span>Crane</span></h1>
+<p class="sub">Go from zero to a live website with HTTPS in under 10 minutes.<br>
+This guide walks you through every step — no prior AppCrane experience needed.</p>
+
+<!-- ============================================================ -->
+<h2 id="overview">How It Works</h2>
+
+<div class="flow">
+<span class="box">Push code to GitHub</span>
+<span class="arrow">&rarr;</span>
+<span class="box">AppCrane deploys it</span>
+<span class="arrow">&rarr;</span>
+<span class="box">Caddy adds HTTPS</span>
+<span class="arrow">&rarr;</span>
+<span class="box b">Live at your domain</span>
+</div>
+
+<p>AppCrane runs on your server and manages the full lifecycle: cloning your repo, building, starting the process, health checks, and routing traffic via Caddy with automatic Let's Encrypt certificates.</p>
+
+<p>Every app gets <strong>two environments</strong> — <span class="g">production</span> and <span class="y">sandbox</span> — running simultaneously on separate ports so you can test before going live.</p>
+
+<!-- ============================================================ -->
+<h2 id="prerequisites">Prerequisites</h2>
+
+<ul>
+<li>An Ubuntu server (22.04+ recommended) with root/sudo access</li>
+<li>A domain name pointed to your server's IP (A record)</li>
+<li>Your app code in a GitHub repository</li>
+<li>Node.js 18+ installed on the server</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="step1">Step 1 &mdash; Install AppCrane on Your Server</h2>
+
+<div class="step">
+<p><span class="step-num">1</span> SSH into your server and clone AppCrane:</p>
+<pre><code>ssh you@your-server
+git clone https://github.com/gitayg/appCrane.git ~/appCrane
+cd ~/appCrane
+npm install
+npm link          <span class="d"># makes the 'crane' CLI available globally</span></code></pre>
+
+<p><span class="step-num">2</span> Initialize the admin account:</p>
+<pre><code>crane init --name admin --email you@example.com</code></pre>
+<p>This creates your admin API key and saves it to <code>~/.appcrane/config.json</code>.</p>
+
+<p><span class="step-num">3</span> Start the AppCrane server:</p>
+<pre><code>npx pm2 start server/index.js --name appcrane
+npx pm2 save
+npx pm2 startup   <span class="d"># auto-start on reboot</span></code></pre>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="step2">Step 2 &mdash; Prepare Your App</h2>
+
+<div class="step">
+<p>Add a <code>deployhub.json</code> manifest to the root of your repo:</p>
+<pre><code>{
+  "name": "My Website",
+  "version": "1.0.0",
+  "fe": {
+    "build": "npm run build",
+    "serve": "npx serve -s dist -l $PORT"
+  },
+  "be": {
+    "entry": "node server.js",
+    "health": "/api/health"
+  }
+}</code></pre>
+
+<div class="tip"><strong>Frontend-only site?</strong> Omit the <code>"be"</code> section. AppCrane will build and serve just the frontend.</div>
+
+<div class="tip"><strong>Backend-only API?</strong> Omit the <code>"fe"</code> section. Just provide <code>"be"</code> with your entry point.</div>
+
+<p>If your app has a backend, expose a health endpoint:</p>
+<pre><code><span class="d">// server.js (Express example)</span>
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', version: '1.0.0' });
+});</code></pre>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="step3">Step 3 &mdash; Create the App in AppCrane</h2>
+
+<div class="step">
+<p>Back on your server, register your app:</p>
+<pre><code>crane app create \
+  --name "My Website" \
+  --slug mysite \
+  --domain mysite.example.com \
+  --repo https://github.com/yourname/mysite</code></pre>
+
+<p>This allocates ports, creates the directory structure at <code>/data/apps/mysite/</code>, and configures routing.</p>
+
+<table>
+<tr><th>Option</th><th>Description</th></tr>
+<tr><td><code>--name</code></td><td>Display name (shown in dashboard)</td></tr>
+<tr><td><code>--slug</code></td><td>URL-safe identifier &mdash; your site lives at <code>/slug/</code></td></tr>
+<tr><td><code>--domain</code></td><td>Custom domain (Caddy auto-provisions HTTPS)</td></tr>
+<tr><td><code>--repo</code></td><td>GitHub repo URL to deploy from</td></tr>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="step4">Step 4 &mdash; Set Environment Variables</h2>
+
+<div class="step">
+<p>If your app needs secrets (API keys, DB URLs), set them securely:</p>
+<pre><code>crane env set mysite --env production \
+  DATABASE_URL=postgres://user:pass@host/db \
+  STRIPE_KEY=sk_live_xxxx</code></pre>
+
+<p>Variables are encrypted with <strong>AES-256-GCM</strong> at rest. Even the admin cannot read them &mdash; only the running app process can.</p>
+
+<div class="warn"><strong>Note:</strong> Set env vars for both <code>production</code> and <code>sandbox</code> if both environments need them.</div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="step5">Step 5 &mdash; Deploy</h2>
+
+<div class="step">
+<p>Deploy to sandbox first to test:</p>
+<pre><code>crane deploy mysite --env sandbox</code></pre>
+
+<p>AppCrane will:</p>
+<ol>
+<li>Clone your repo (latest <code>main</code> branch)</li>
+<li>Run <code>npm install</code></li>
+<li>Run the build command from <code>deployhub.json</code></li>
+<li>Write encrypted env vars to <code>.env</code></li>
+<li>Start the process via PM2</li>
+<li>Run the health check</li>
+<li>Route traffic to the new release (zero downtime)</li>
+</ol>
+
+<p>Once sandbox looks good, promote to production:</p>
+<pre><code>crane promote mysite</code></pre>
+
+<p>Or deploy directly to production:</p>
+<pre><code>crane deploy mysite --env production</code></pre>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="step6">Step 6 &mdash; Set Up Auto-Deploy (Optional)</h2>
+
+<div class="step">
+<p>Configure a GitHub webhook so every push to <code>main</code> triggers a deploy automatically:</p>
+
+<ol>
+<li>Get your webhook URL and secret:
+<pre><code>crane webhook show mysite</code></pre></li>
+<li>In GitHub: <strong>Settings &rarr; Webhooks &rarr; Add webhook</strong>
+<ul>
+<li><strong>Payload URL:</strong> <code>https://crane.example.com/api/webhooks/&lt;token&gt;</code></li>
+<li><strong>Content type:</strong> <code>application/json</code></li>
+<li><strong>Secret:</strong> the secret from step 1</li>
+<li><strong>Events:</strong> Just the push event</li>
+</ul></li>
+</ol>
+
+<p>Now every <code>git push</code> to <code>main</code> triggers an automatic sandbox deploy.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="step7">Step 7 &mdash; Monitor & Manage</h2>
+
+<div class="step">
+<h3>Health Checks</h3>
+<p>AppCrane pings your health endpoint every 30 seconds. If it fails, you get an email alert and the app auto-restarts after consecutive failures.</p>
+<pre><code>crane health test mysite --env production
+crane health config mysite --interval 60 --threshold 3</code></pre>
+
+<h3>Rollback</h3>
+<p>Something broke? Roll back to the previous release instantly:</p>
+<pre><code>crane rollback mysite --env production</code></pre>
+<p>AppCrane keeps the last 5 releases for instant rollback.</p>
+
+<h3>View Logs</h3>
+<pre><code>crane logs mysite --env production --lines 100</code></pre>
+
+<h3>Dashboard</h3>
+<p>Open the web dashboard for a visual overview of all apps, health status, deploy history, and more:</p>
+<pre><code>https://crane.example.com/dashboard</code></pre>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="api">Using the REST API</h2>
+
+<p>Every operation above is also available via HTTP. Pass your API key in the <code>X-API-Key</code> header:</p>
+
+<pre><code><span class="d"># Deploy via curl</span>
+curl -X POST https://crane.example.com/api/apps/mysite/deploy/sandbox \
+  -H "X-API-Key: dhk_user_xxxxx"
+
+<span class="d"># Check health</span>
+curl https://crane.example.com/api/apps/mysite/health \
+  -H "X-API-Key: dhk_user_xxxxx"
+
+<span class="d"># List all apps</span>
+curl https://crane.example.com/api/apps \
+  -H "X-API-Key: dhk_user_xxxxx"</code></pre>
+
+<p>Full API reference: <a href="/" style="color:var(--accent)">API Documentation</a></p>
+
+<!-- ============================================================ -->
+<h2 id="team">Adding Team Members</h2>
+
+<div class="step">
+<p>Create a user and assign them to specific apps:</p>
+<pre><code>crane user create --name alice --email alice@example.com
+crane app assign mysite --email alice@example.com</code></pre>
+
+<p>Each user gets their own API key scoped to their assigned apps. They can deploy, set env vars, and manage health &mdash; but cannot create or delete apps.</p>
+
+<table>
+<tr><th>Action</th><th>Admin</th><th>App User</th></tr>
+<tr><td>Create / delete apps</td><td class="g">Yes</td><td class="r">No</td></tr>
+<tr><td>Deploy / rollback / promote</td><td class="r">No</td><td class="g">Yes (own apps)</td></tr>
+<tr><td>View / edit env vars</td><td class="r">No</td><td class="g">Yes (own apps)</td></tr>
+<tr><td>Manage users</td><td class="g">Yes</td><td class="r">No</td></tr>
+<tr><td>View audit log</td><td class="g">Yes</td><td class="g">Yes (own apps)</td></tr>
+</table>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="structure">App Directory Structure</h2>
+
+<pre><code>/data/apps/mysite/
+  production/
+    current -> releases/20260412-143022   <span class="d"># symlink to active release</span>
+    releases/
+      20260412-143022/                    <span class="d"># each deploy is a timestamped folder</span>
+      20260411-091500/
+    shared/                               <span class="d"># persistent data across deploys</span>
+  sandbox/
+    current -> releases/...
+    releases/
+    shared/</code></pre>
+
+<!-- ============================================================ -->
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<table>
+<tr><th>Problem</th><th>Solution</th></tr>
+<tr><td>Deploy fails at build step</td><td>Check that <code>deployhub.json</code> <code>build</code> command works locally with <code>npm run build</code></td></tr>
+<tr><td>Health check fails after deploy</td><td>Ensure your app listens on <code>$PORT</code> (AppCrane sets this env var)</td></tr>
+<tr><td>Assets load with wrong path</td><td>Set <code>base</code> in your Vite/webpack config to <code>process.env.APP_BASE_PATH</code></td></tr>
+<tr><td>HTTPS not working</td><td>Verify your domain's A record points to the server IP, then restart Caddy</td></tr>
+<tr><td>Permission denied</td><td>App users can only access their assigned apps. Ask admin to run <code>crane app assign</code></td></tr>
+</table>
+
+<br><br>
+<p style="text-align:center;color:var(--dim);font-size:.85rem">AppCrane &mdash; AI-powered app builder.</p>
+<br>
+
+</div>
+</body>
+</html>

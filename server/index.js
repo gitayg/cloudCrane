@@ -243,7 +243,7 @@ app.get('/api/info', (req, res) => {
     name: 'AppCrane',
     ...(authenticated && { version: VERSION }),
     status: adminExists ? 'ready' : 'needs_init',
-    description: 'Self-hosted deployment manager',
+    description: 'AI-powered app builder',
     docs: '/docs',
     dashboard: '/dashboard',
     agent_guide: '/agent-guide',
