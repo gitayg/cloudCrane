@@ -33,9 +33,9 @@ th{color:var(--dim);font-weight:500;background:var(--surface2)}
 .app-row{background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:10px;overflow:hidden}
 .app-row .row-top{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border)}
 .app-row .row-top .app-name{font-weight:700;font-size:1.05rem}
-.app-row .row-envs{display:flex}
-.app-row .env-half{flex:1;padding:10px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.app-row .env-half:first-child{border-right:1px solid var(--border)}
+.app-row .row-envs{display:flex;flex-direction:column}
+.app-row .env-half{padding:8px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.app-row .env-half:first-child{border-bottom:1px solid var(--border)}
 .app-row .env-label{font-weight:700;font-size:13px;min-width:50px}
 .app-row .env-label a{text-decoration:none;color:inherit}.app-row .env-label a:hover{text-decoration:underline}
 .app-row .env-label.prod{color:var(--green)}.app-row .env-label.sand{color:var(--orange)}
