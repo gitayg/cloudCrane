@@ -53,6 +53,9 @@ npm link    # makes 'crane' command available globally
 # 2. Start the server
 npx pm2 start server/index.js --name appcrane
 
+# 2.5. (Optional) Set Anthropic API key for AppStudio
+echo 'ANTHROPIC_API_KEY=sk-ant-...' >> .env
+
 # 3. Initialize admin (must run on the server)
 crane init --name admin --email admin@example.com
 
