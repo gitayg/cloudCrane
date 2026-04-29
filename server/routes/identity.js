@@ -114,7 +114,7 @@ router.post('/login', (req, res) => {
     ORDER BY a.name
   `).all(user.id).map(a => ({
     ...a,
-    app_role: isAdmin && a.app_role === 'none' ? 'admin' : a.app_role,
+    app_role: isAdmin && (a.app_role === 'none' || a.app_role === 'viewer') ? 'admin' : a.app_role,
     has_icon: hasIcon(a.slug),
   }));
 
@@ -309,7 +309,7 @@ router.get('/me', (req, res) => {
     ORDER BY a.name
   `).all(session.id).map(a => ({
     ...a,
-    role: isAdmin && a.role === 'none' ? 'admin' : a.role,
+    role: isAdmin && (a.role === 'none' || a.role === 'viewer') ? 'admin' : a.role,
     has_icon: hasIcon(a.slug),
   }));
 
