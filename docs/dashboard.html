@@ -20,6 +20,19 @@ h2{font-size:.85rem;margin:28px 0 10px;letter-spacing:.6px;font-weight:600}
 .app-row .row-top .app-actions{display:flex;gap:6px;align-items:center}
 .app-row.errored{border-color:#ef444444;background:#0f1117}
 .users-tags{display:flex;gap:4px;flex-wrap:wrap}
+.env-metrics{padding:3px 0 2px;width:100%}
+.res-row{display:flex;align-items:center;gap:5px;margin-bottom:2px}
+.res-lbl{font-size:.68rem;color:var(--dim);width:26px;flex-shrink:0;font-weight:600;text-transform:uppercase;letter-spacing:.3px}
+.res-bar{flex:1;height:4px;background:var(--surface2);border-radius:2px;overflow:hidden;min-width:40px}
+.res-fill{height:100%;border-radius:2px;transition:width .4s}
+.res-val{font-size:.68rem;color:var(--dim);width:44px;text-align:right;flex-shrink:0;font-family:monospace}
+/* Mobile */
+@media(max-width:768px){
+  .app-row .row-top{flex-direction:column;align-items:flex-start;gap:8px}
+  .app-row .app-actions{flex-wrap:wrap}
+  .app-row .env-info{flex-wrap:wrap}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
+}
 </style>
 <script src="/docs/shared.js"></script>
 </head>
@@ -196,6 +209,8 @@ async function loadAll() {
       apiFetch('/api/enhancements').catch(() => ({ requests: [] })),
       apiFetch('/api/dashboard/app-activity').catch(() => ({ days: [], apps: [] })),
     ]);
+    // Metrics fetched separately (non-blocking, may be slow)
+    apiFetch('/api/server/app-metrics').then(md => applyMetrics(md.metrics || {})).catch(() => {});
 
     const allApps = appsData.apps || [];
     const allUsers = users.users || [];
@@ -416,6 +431,7 @@ function appCard(a, isErrored) {
         '<button onclick="toggleEnvVars(\'' + slug + '\',\'' + env + '\')">env</button>' +
         '<a href="/app?slug=' + slug + '">manage</a>' +
       '</span>' +
+      '<div id="metrics_' + slug + '_' + env + '" class="env-metrics"></div>' +
     '</div>';
   }
 
@@ -795,6 +811,38 @@ function showPromptModal(title, prompt) {
   document.body.appendChild(overlay);
   overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
 }
+
+function fmtMem(bytes) {
+  if (!bytes || bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB';
+  if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(0) + ' MB';
+  return (bytes / 1024 / 1024 / 1024).toFixed(1) + ' GB';
+}
+
+function applyMetrics(metrics) {
+  for (const [slug, envs] of Object.entries(metrics)) {
+    for (const [env, m] of Object.entries(envs)) {
+      const el = document.getElementById('metrics_' + slug + '_' + env);
+      if (!el || !m) continue;
+      const cpu = parseFloat(m.cpu) || 0;
+      const cpuPct = Math.min(cpu, 100);
+      const mem = m.memory || 0;
+      const memPct = Math.min((mem / (512 * 1024 * 1024)) * 100, 100);
+      el.innerHTML =
+        '<div class="res-row"><span class="res-lbl">CPU</span>' +
+          '<div class="res-bar"><div class="res-fill" style="width:' + cpuPct + '%;background:' + barColor(cpuPct) + '"></div></div>' +
+          '<span class="res-val">' + cpu.toFixed(1) + '%</span></div>' +
+        '<div class="res-row"><span class="res-lbl">RAM</span>' +
+          '<div class="res-bar"><div class="res-fill" style="width:' + memPct + '%;background:var(--accent)"></div></div>' +
+          '<span class="res-val">' + fmtMem(mem) + '</span></div>';
+    }
+  }
+}
+
+// Refresh metrics every 30s independently of full reload
+setInterval(() => {
+  apiFetch('/api/server/app-metrics').then(md => applyMetrics(md.metrics || {})).catch(() => {});
+}, 30000);
 
 // Auto-refresh every 30s
 setInterval(loadAll, 30000);

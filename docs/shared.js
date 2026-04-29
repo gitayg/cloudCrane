@@ -109,19 +109,33 @@ function sidebar(active) {
     '<a href="' + p.href + '" class="sidebar-link' + (active === p.id ? ' active' : '') + '">' + p.label + '</a>'
   ).join('');
 
-  return '<aside class="sidebar">' +
-    '<a href="/dashboard" class="sidebar-logo">App<span>Crane</span></a>' +
-    '<nav class="sidebar-nav">' + nav + '</nav>' +
-    '<div class="sidebar-footer">' +
-      '<div id="userInfo" style="color:var(--text);font-weight:600"></div>' +
-      '<div id="craneVersion" style="color:var(--dim);cursor:pointer" onclick="checkForUpdate()" title="Click to check for updates"></div>' +
-      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:2px">' +
-        '<a href="/docs" style="color:var(--dim);text-decoration:none">Docs</a>' +
-        '<a href="/agent-guide" style="color:var(--dim);text-decoration:none">Agent Guide</a>' +
-        '<button class="btn" onclick="setKey(\'\');location.href=\'/dashboard\'" style="font-size:.72rem;padding:2px 8px;margin-left:auto">Logout</button>' +
-      '</div>' +
+  return '<div class="mobile-topbar">' +
+      '<a href="/dashboard" style="font-weight:700;font-size:1.05rem;text-decoration:none;color:var(--text)">App<span style="color:var(--accent)">Crane</span></a>' +
+      '<button class="hamburger" onclick="toggleSidebar()" aria-label="Menu">&#9776;</button>' +
     '</div>' +
-  '</aside>';
+    '<div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>' +
+    '<aside class="sidebar" id="mainSidebar">' +
+      '<a href="/dashboard" class="sidebar-logo">App<span>Crane</span></a>' +
+      '<nav class="sidebar-nav">' + nav + '</nav>' +
+      '<div class="sidebar-footer">' +
+        '<div id="userInfo" style="color:var(--text);font-weight:600"></div>' +
+        '<div id="craneVersion" style="color:var(--dim);cursor:pointer" onclick="checkForUpdate()" title="Click to check for updates"></div>' +
+        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:2px">' +
+          '<a href="/docs" style="color:var(--dim);text-decoration:none">Docs</a>' +
+          '<a href="/agent-guide" style="color:var(--dim);text-decoration:none">Agent Guide</a>' +
+          '<button class="btn" onclick="setKey(\'\');location.href=\'/dashboard\'" style="font-size:.72rem;padding:2px 8px;margin-left:auto">Logout</button>' +
+        '</div>' +
+      '</div>' +
+    '</aside>';
+}
+
+function toggleSidebar() {
+  document.getElementById('mainSidebar').classList.toggle('open');
+  document.getElementById('sidebarOverlay').classList.toggle('open');
+}
+function closeSidebar() {
+  document.getElementById('mainSidebar').classList.remove('open');
+  document.getElementById('sidebarOverlay').classList.remove('open');
 }
 
 function topbar(active) { return sidebar(active); }

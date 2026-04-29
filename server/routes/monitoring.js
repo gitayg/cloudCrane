@@ -62,6 +62,26 @@ router.get('/server/health', requireAdmin, (req, res) => {
 });
 
 /**
+ * GET /api/server/app-metrics - Batch CPU/RAM for all apps (admin)
+ */
+router.get('/server/app-metrics', requireAdmin, async (req, res) => {
+  const db = getDb();
+  const apps = db.prepare('SELECT slug FROM apps').all();
+  const { getProcessMetrics } = await import('../services/docker.js');
+
+  const metrics = {};
+  await Promise.all(apps.map(async (app) => {
+    metrics[app.slug] = {};
+    for (const env of ['production', 'sandbox']) {
+      try { metrics[app.slug][env] = await getProcessMetrics(app.slug, env); }
+      catch (_) { metrics[app.slug][env] = null; }
+    }
+  }));
+
+  res.json({ metrics });
+});
+
+/**
  * GET /api/apps/:slug/metrics/:env - Per-app metrics
  */
 router.get('/:slug/metrics/:env', requireAppAccess, async (req, res) => {

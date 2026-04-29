@@ -20,6 +20,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .sidebar-footer{padding:12px 14px;border-top:1px solid var(--border);font-size:.78rem;display:flex;flex-direction:column;gap:5px}
 .page-content{margin-left:220px;flex:1;min-width:0}
 .container{max-width:1200px;margin:0 auto;padding:24px}
+.mobile-topbar{display:none}
+.sidebar-overlay{display:none;position:fixed;inset:0;z-index:9;background:rgba(0,0,0,.45)}
+.sidebar-overlay.open{display:block}
+.hamburger{background:none;border:none;color:var(--text);font-size:1.3rem;cursor:pointer;padding:4px 8px;line-height:1}
+@media(max-width:768px){
+  .page-body{flex-direction:column}
+  .mobile-topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:8;width:100%}
+  .sidebar{transform:translateX(-220px);transition:transform .22s ease;box-shadow:none}
+  .sidebar.open{transform:translateX(0);box-shadow:4px 0 24px rgba(0,0,0,.5)}
+  .page-content{margin-left:0}
+  .container{padding:16px}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+  table{font-size:.8rem}
+  th,td{padding:8px 10px}
+}
 h2{font-size:1.1rem;color:var(--dim);margin:24px 0 12px;text-transform:uppercase;letter-spacing:.5px;font-weight:500}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-bottom:24px}
 .stat{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px}
