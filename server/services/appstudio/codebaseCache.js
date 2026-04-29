@@ -33,7 +33,7 @@ function buildFilesMap(repoDir, fileTree) {
   const map = {};
   let totalBytes = 0;
   for (const p of paths) {
-    const abs = join(repoDir, p);
+    const abs = join(repoDir, p); // nosemgrep: path-join-resolve-traversal — p comes from git ls-tree, not user input
     if (!existsSync(abs)) continue;
     try {
       const size = statSync(abs).size;
@@ -128,7 +128,7 @@ export function refreshCache(appSlug, repoDir) {
           // Renamed: remove old, add new
           delete filesMap[oldPath];
           if (SOURCE_EXTS.test(filePath)) {
-            const abs = join(repoDir, filePath);
+            const abs = join(repoDir, filePath); // nosemgrep: path-join-resolve-traversal — filePath from git diff output
             if (existsSync(abs)) {
               try {
                 const content = readFileSync(abs, 'utf8');
@@ -139,7 +139,7 @@ export function refreshCache(appSlug, repoDir) {
         } else {
           // Added or modified
           if (SOURCE_EXTS.test(filePath)) {
-            const abs = join(repoDir, filePath);
+            const abs = join(repoDir, filePath); // nosemgrep: path-join-resolve-traversal — filePath from git diff output
             if (existsSync(abs)) {
               try {
                 const content = readFileSync(abs, 'utf8');

@@ -17,7 +17,7 @@ const FORBIDDEN_ENV_PATTERNS = [
  *  - Must not bind-mount or reference /data in VOLUME (AppCrane manages that)
  */
 export function validateDockerfile(releaseDir, { expectedPort } = {}) {
-  const path = join(releaseDir, 'Dockerfile');
+  const path = join(releaseDir, 'Dockerfile'); // nosemgrep: path-join-resolve-traversal — releaseDir is an internal computed path
   let content;
   try {
     content = readFileSync(path, 'utf8');

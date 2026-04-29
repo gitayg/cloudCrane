@@ -134,12 +134,12 @@ export async function planEnhancement({ appSlug, request, repoDir, agentContext,
   const keywords = extractKeywords(request + ' ' + (priorComments || ''));
   const relevantPaths = grepRelevantFiles(repoDir, fileTree, keywords);
   const fileContents = relevantPaths
-    .map(rel => `### ${rel}\n\`\`\`\n${readFileSafe(join(repoDir, rel))}\n\`\`\``)
+    .map(rel => `### ${rel}\n\`\`\`\n${readFileSafe(join(repoDir, rel))}\n\`\`\``) // nosemgrep: path-join-resolve-traversal — rel from git ls-tree/grep
     .join('\n\n');
 
   const testPaths = getTestFiles(fileTree);
   const testContents = testPaths
-    .map(p => `### ${p}\n\`\`\`\n${readFileSafe(join(repoDir, p), 6000)}\n\`\`\``)
+    .map(p => `### ${p}\n\`\`\`\n${readFileSafe(join(repoDir, p), 6000)}\n\`\`\``) // nosemgrep: path-join-resolve-traversal — p from git ls-files
     .join('\n\n');
 
   const contextNote = fromCache

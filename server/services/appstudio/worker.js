@@ -95,13 +95,13 @@ function getApp(slug) {
 
 function getAgentContext(slug) {
   const dataDir = resolve(process.env.DATA_DIR || './data');
-  const ctxPath = join(dataDir, 'apps', slug, 'agent-context.md');
+  const ctxPath = join(dataDir, 'apps', slug, 'agent-context.md'); // nosemgrep: path-join-resolve-traversal — slug is DB-validated regex ^[a-z0-9][a-z0-9-]*$
   return existsSync(ctxPath) ? readFileSync(ctxPath, 'utf8') : '';
 }
 
 function getRepoDir(app) {
   const dataDir = resolve(process.env.DATA_DIR || './data');
-  const current = join(dataDir, 'apps', app.slug, 'production', 'current');
+  const current = join(dataDir, 'apps', app.slug, 'production', 'current'); // nosemgrep: path-join-resolve-traversal — slug is DB-validated
   if (existsSync(current)) return current;
   return null;
 }

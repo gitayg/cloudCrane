@@ -50,7 +50,7 @@ function collectKeyFiles(repoDir, fileTree) {
   const seen = new Set();
 
   for (const p of priority) {
-    const abs = join(repoDir, p);
+    const abs = join(repoDir, p); // nosemgrep: path-join-resolve-traversal — p is a hardcoded filename list
     if (existsSync(abs)) {
       const content = readKeySafe(abs);
       if (content) { result.push({ path: p, content }); seen.add(p); }
@@ -66,7 +66,7 @@ function collectKeyFiles(repoDir, fileTree) {
   ).slice(0, 6);
 
   for (const p of extras) {
-    const content = readKeySafe(join(repoDir, p));
+    const content = readKeySafe(join(repoDir, p)); // nosemgrep: path-join-resolve-traversal — p from git ls-tree output
     if (content) { result.push({ path: p, content }); seen.add(p); }
   }
 
@@ -119,7 +119,7 @@ async function updateContextDoc(existingDoc, changedFiles, repoDir) {
   const diffs = changedFiles.slice(0, 10).map(({ status, path, newPath }) => {
     if (status === 'D') return `DELETED: ${path}`;
     const target = newPath || path;
-    const content = readKeySafe(join(repoDir, target));
+    const content = readKeySafe(join(repoDir, target)); // nosemgrep: path-join-resolve-traversal — target from git diff output
     const prefix = status.startsWith('R') ? `RENAMED ${path} → ${target}` : `MODIFIED: ${target}`;
     return content ? `${prefix}\n\`\`\`\n${content}\n\`\`\`` : `${prefix} (unreadable)`;
   }).join('\n\n');

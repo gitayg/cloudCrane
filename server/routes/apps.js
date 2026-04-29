@@ -6,6 +6,7 @@ import { auditMiddleware, logAudit } from '../middleware/audit.js';
 import { getNextSlot, getPortsForSlot } from '../services/portAllocator.js';
 import { encrypt, generateApiKey, hashApiKey } from '../services/encryption.js';
 import { AppError } from '../utils/errors.js';
+import { resolveSafe } from '../utils/paths.js';
 import { reloadCaddy } from '../services/caddy.js';
 import log from '../utils/logger.js';
 import { existsSync, mkdirSync, renameSync } from 'fs';
@@ -347,8 +348,9 @@ router.post('/:slug/rename', requireAdmin, requireAppAccess, auditMiddleware('ap
 
   // Rename data directory
   const dataDir = process.env.DATA_DIR || './data';
-  const oldDir = join(dataDir, 'apps', oldSlug);
-  const newDir = join(dataDir, 'apps', new_slug);
+  const appsBase = join(dataDir, 'apps');
+  const oldDir = resolveSafe(appsBase, oldSlug);
+  const newDir = resolveSafe(appsBase, new_slug);
   if (existsSync(oldDir)) {
     renameSync(oldDir, newDir);
   }

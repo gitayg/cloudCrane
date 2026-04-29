@@ -73,7 +73,7 @@ function defaultInstall() {
  * Apps without these fields use the existing flat-layout build (unchanged).
  */
 export function ensureDockerfile({ releaseDir, manifest, appBasePath, craneUrl, craneInternalUrl }) {
-  const existing = join(releaseDir, 'Dockerfile');
+  const existing = join(releaseDir, 'Dockerfile'); // nosemgrep: path-join-resolve-traversal — releaseDir is an internal computed path
 
   // If the app ships its own Dockerfile, use it as-is.
   if (existsSync(existing)) {
