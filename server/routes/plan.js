@@ -82,15 +82,20 @@ router.get('/:enhancementId/stream', (req, res) => {
   let lastStatus = '';
   let lastJobId = null;
   let done = false;
+  const connectedAt = Date.now();
 
-  const keepalive = setInterval(() => { try { res.write(': ping\n\n'); } catch (_) {} }, 20000);
+  function elapsedSec() { return Math.round((Date.now() - connectedAt) / 1000); }
 
-  const poll = setInterval(() => {
+  function sendStatus(text, extra = {}) {
+    res.write(`data: ${JSON.stringify({ type: 'status', text, elapsed: elapsedSec(), ...extra })}\n\n`);
+  }
+
+  function checkOnce() {
     if (done) return;
     try {
       const db = getDb();
       const job = db.prepare(`
-        SELECT id, status, output_json, error_message
+        SELECT id, status, output_json, error_message, started_at
         FROM enhancement_jobs WHERE enhancement_id = ? AND phase IN ('plan', 'revise_plan')
         ORDER BY id DESC LIMIT 1
       `).get(id);
@@ -98,7 +103,7 @@ router.get('/:enhancementId/stream', (req, res) => {
       if (!job) {
         if (lastStatus !== 'waiting') {
           lastStatus = 'waiting';
-          res.write(`data: ${JSON.stringify({ type: 'status', text: 'Queued — waiting for worker…' })}\n\n`);
+          sendStatus('Queued — waiting for worker to pick up the job…');
         }
         return;
       }
@@ -107,17 +112,32 @@ router.get('/:enhancementId/stream', (req, res) => {
       lastJobId = job.id;
 
       if (job.status === 'queued') {
-        if (lastStatus !== 'queued') {
+        // Count jobs ahead in queue
+        const ahead = db.prepare(`SELECT COUNT(*) as n FROM enhancement_jobs WHERE status = 'queued' AND id < ?`).get(job.id)?.n || 0;
+        const queueMsg = ahead > 0
+          ? `Job queued — ${ahead} job${ahead > 1 ? 's' : ''} ahead in queue`
+          : 'Job queued — worker will start shortly (checks every 5 seconds)';
+        if (lastStatus !== 'queued' || ahead !== (lastStatus._ahead ?? -1)) {
           lastStatus = 'queued';
-          res.write(`data: ${JSON.stringify({ type: 'status', text: 'Plan job queued — worker will pick it up shortly…' })}\n\n`);
+          lastStatus._ahead = ahead;
+          sendStatus(queueMsg, { ahead });
         }
         return;
       }
 
       if (job.status === 'running') {
+        const startedAt = job.started_at ? new Date(job.started_at.replace(' ', 'T') + 'Z').getTime() : null;
+        const runSec = startedAt ? Math.round((Date.now() - startedAt) / 1000) : null;
+        const estTotal = 45; // typical plan generation ~30-60s
+        const estRemaining = startedAt ? Math.max(0, estTotal - runSec) : null;
+        const runningMsg = runSec !== null
+          ? `Analyzing codebase… (${runSec}s elapsed${estRemaining > 0 ? `, ~${estRemaining}s remaining` : ''})`
+          : 'Analyzing codebase and generating plan…';
         if (lastStatus !== 'running') {
           lastStatus = 'running';
-          res.write(`data: ${JSON.stringify({ type: 'status', text: 'Analyzing codebase and generating plan…' })}\n\n`);
+          sendStatus(runningMsg, { run_sec: runSec, est_remaining: estRemaining });
+        } else if (runSec !== null && runSec % 5 === 0) {
+          sendStatus(runningMsg, { run_sec: runSec, est_remaining: estRemaining });
         }
         let output = null;
         try { output = job.output_json ? JSON.parse(job.output_json) : null; } catch (_) {}
@@ -136,7 +156,7 @@ router.get('/:enhancementId/stream', (req, res) => {
         const enh = db.prepare('SELECT ai_plan_json FROM enhancement_requests WHERE id = ?').get(id);
         let plan = null;
         try { plan = enh?.ai_plan_json ? JSON.parse(enh.ai_plan_json) : null; } catch (_) {}
-        res.write(`data: ${JSON.stringify({ type: 'plan', plan })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: 'plan', plan, elapsed: elapsedSec() })}\n\n`);
       } else {
         res.write(`data: ${JSON.stringify({ type: 'error', message: job.error_message || 'Planning failed' })}\n\n`);
       }
@@ -144,7 +164,12 @@ router.get('/:enhancementId/stream', (req, res) => {
     } catch (err) {
       log.error(`Plan stream poll error: ${err.message}`);
     }
-  }, 2000);
+  }
+
+  // Fire once immediately so the client sees status before the first 2s tick
+  checkOnce();
+  const keepalive = setInterval(() => { try { res.write(': ping\n\n'); } catch (_) {} }, 20000);
+  const poll = setInterval(checkOnce, 2000);
 
   req.on('close', () => {
     done = true;

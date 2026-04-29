@@ -1783,7 +1783,9 @@ function _streamPlan() {
       var evt = JSON.parse(e.data);
       if (evt.type === 'status') {
         workEl.style.display = 'flex';
-        workTxt.textContent = evt.text;
+        var txt = evt.text;
+        if (evt.elapsed > 0) txt += ' (' + evt.elapsed + 's)';
+        workTxt.textContent = txt;
       } else if (evt.type === 'progress') {
         workEl.style.display = 'none';
         if (!streamMsgDiv) {
@@ -1838,7 +1840,7 @@ function _streamPlan() {
 
     es.onerror = function() {
       esErrCount++;
-      if (esErrCount <= 5) { workTxt.textContent = 'Waiting for plan job\u2026'; return; }
+      if (esErrCount <= 5) { workTxt.textContent = 'Connecting to plan stream\u2026'; return; }
       es.close();
       workEl.style.display = 'none';
       _appendPlanMsg('assistant', '⚠️ Could not connect. Please try again.');
