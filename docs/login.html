@@ -216,7 +216,17 @@ input:focus{border-color:var(--accent)}
 .plan-msg{padding:10px 16px;border-bottom:1px solid var(--border)}
 .plan-msg.user{background:var(--surface2)}
 .plan-msg-label{font-size:.63rem;color:var(--dim);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;font-weight:600}
-.plan-streaming{white-space:pre-wrap;font-size:.82rem;line-height:1.5;color:var(--dim)}
+.plan-streaming{font-size:.82rem;line-height:1.6;color:var(--dim)}
+.plan-streaming .sm-h1{color:var(--text);font-size:.95rem;font-weight:700;margin:10px 0 4px;display:block}
+.plan-streaming .sm-h2{color:var(--accent);font-size:.87rem;font-weight:700;margin:8px 0 3px;display:block}
+.plan-streaming .sm-h3{color:var(--text);font-size:.82rem;font-weight:600;margin:6px 0 2px;display:block;opacity:.85}
+.plan-streaming .sm-code{background:var(--surface2);color:var(--accent);font-family:monospace;border-radius:3px;padding:0 4px;font-size:.78rem}
+.plan-streaming .sm-pre{background:var(--surface2);border-radius:5px;padding:8px 10px;font-family:monospace;font-size:.75rem;color:var(--dim);display:block;margin:4px 0;white-space:pre-wrap;overflow-x:auto}
+.plan-streaming .sm-pre.sm-json{color:#9ecbff}
+.plan-streaming .sm-li{display:block;padding-left:14px;position:relative}
+.plan-streaming .sm-li::before{content:'›';position:absolute;left:2px;color:var(--accent);font-weight:700}
+.plan-streaming .sm-b{color:var(--text);font-weight:600}
+.plan-streaming .sm-p{display:block;margin:2px 0}
 .plan-summary{font-weight:600;font-size:.88rem;margin-bottom:10px}
 .plan-section{margin-bottom:12px}
 .plan-section-hdr{font-size:.68rem;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:5px}
@@ -1697,6 +1707,43 @@ function clearPlanPeekCtx() {
   document.getElementById('planPeekBar').style.display = 'none';
 }
 
+function _renderMarkdownStream(text) {
+  function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function inline(s) {
+    // code spans first
+    s = s.replace(/`([^`]+)`/g, function(_,c){ return '<span class="sm-code">'+esc(c)+'</span>'; });
+    // bold **...**
+    s = s.replace(/\*\*([^*]+)\*\*/g, function(_,b){ return '<span class="sm-b">'+b+'</span>'; });
+    return s;
+  }
+  var lines = text.split('\n');
+  var html = '';
+  var inPre = false, preLang = '', preBuf = '';
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    if (!inPre && /^```/.test(line)) {
+      inPre = true; preLang = line.slice(3).trim(); preBuf = ''; continue;
+    }
+    if (inPre) {
+      if (/^```/.test(line)) {
+        html += '<span class="sm-pre' + (preLang === 'json' ? ' sm-json' : '') + '">' + esc(preBuf.replace(/\n$/, '')) + '</span>';
+        inPre = false; preLang = ''; preBuf = '';
+      } else { preBuf += line + '\n'; }
+      continue;
+    }
+    var m;
+    if ((m = line.match(/^###\s+(.*)/))) { html += '<span class="sm-h3">'+inline(esc(m[1]))+'</span>'; }
+    else if ((m = line.match(/^##\s+(.*)/))) { html += '<span class="sm-h2">'+inline(esc(m[1]))+'</span>'; }
+    else if ((m = line.match(/^#\s+(.*)/))) { html += '<span class="sm-h1">'+inline(esc(m[1]))+'</span>'; }
+    else if ((m = line.match(/^[-*]\s+(.*)/))) { html += '<span class="sm-li">'+inline(esc(m[1]))+'</span>'; }
+    else if ((m = line.match(/^\d+\.\s+(.*)/))) { html += '<span class="sm-li">'+inline(esc(m[1]))+'</span>'; }
+    else if (line.trim() === '') { html += '<span class="sm-p"> </span>'; }
+    else { html += '<span class="sm-p">'+inline(esc(line))+'</span>'; }
+  }
+  if (inPre && preBuf) html += '<span class="sm-pre">' + esc(preBuf) + '</span>';
+  return html;
+}
+
 function _appendPlanMsg(role, content) {
   var container = document.getElementById('planMessages');
   var empty = container.querySelector('.ask-empty');
@@ -1803,7 +1850,7 @@ function _streamPlan() {
           streamMsgDiv.appendChild(streamContentDiv);
           container.appendChild(streamMsgDiv);
         }
-        streamContentDiv.textContent = evt.text;
+        streamContentDiv.innerHTML = _renderMarkdownStream(evt.text);
         document.getElementById('planMessages').scrollTop = document.getElementById('planMessages').scrollHeight;
       } else if (evt.type === 'plan') {
         es.close();
