@@ -256,6 +256,24 @@ async function handleCode(job) {
   );
 
   db.prepare('INSERT INTO enhancement_jobs (enhancement_id, phase) VALUES (?, ?)').run(enh.id, 'build');
+
+  // Auto-replan any enhancements for the same app whose plan is now stale
+  if (enh.app_slug) {
+    const stale = db.prepare(`
+      SELECT id FROM enhancement_requests
+      WHERE app_slug = ? AND status = 'pending_user_review_plan' AND id != ?
+    `).all(enh.app_slug, enh.id);
+    for (const s of stale) {
+      db.prepare(`
+        UPDATE enhancement_requests
+        SET status = 'planning', ai_plan_json = NULL,
+            ai_log = COALESCE(ai_log, '') || ?
+        WHERE id = ?
+      `).run(`\n[${new Date().toISOString()}] Plan invalidated — new code committed for ${enh.app_slug} (enh #${enh.id}). Re-planning…\n`, s.id);
+      db.prepare('INSERT INTO enhancement_jobs (enhancement_id, phase) VALUES (?, ?)').run(s.id, 'plan');
+      log.info(`AppStudio: stale plan re-queued for enh #${s.id} after code commit on ${enh.app_slug}`);
+    }
+  }
 }
 
 async function handleBuild(job) {
