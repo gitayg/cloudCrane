@@ -1497,7 +1497,9 @@ async function sendAskQuestion() {
     _askSessionId = d.session_id;
 
     const es = new EventSource(API + '/api/ask/stream/' + d.job_id);
+    var esErrCount = 0;
     es.onmessage = function(e) {
+      esErrCount = 0;
       const evt = JSON.parse(e.data);
       if (evt.type === 'log') {
         workTxt.textContent = evt.text.replace(/^\[ask\]\s*/, '').replace(/^\[stderr\]\s*/, '');
@@ -1517,9 +1519,15 @@ async function sendAskQuestion() {
       }
     };
     es.onerror = function() {
+      esErrCount++;
+      if (esErrCount <= 5) {
+        // Likely a cold-start proxy retry — keep waiting, EventSource will reconnect automatically
+        workTxt.textContent = 'Starting session\u2026';
+        return;
+      }
       es.close();
       workEl.style.display = 'none';
-      _appendAskMsg('assistant', '⚠️ Connection lost. Try again.');
+      _appendAskMsg('assistant', '⚠️ Could not connect. Please try again.');
       _askBusy = false;
       document.getElementById('askSendBtn').disabled = false;
     };

@@ -118,6 +118,10 @@ router.get('/stream/:jobId', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // disable nginx/Caddy proxy buffering
+
+  // Send an immediate comment so the proxy sees bytes and doesn't time out the connection
+  res.write(': connected\n\n');
 
   for (const line of job.logs) res.write(`data: ${JSON.stringify({ type: 'log', text: line })}\n\n`);
 
@@ -127,8 +131,14 @@ router.get('/stream/:jobId', (req, res) => {
     return res.end();
   }
 
+  // Keepalive ping every 20s so proxies don't close the connection during long cold starts
+  const keepalive = setInterval(() => { try { res.write(': ping\n\n'); } catch (_) {} }, 20000);
+
   job.clients.add(res);
-  req.on('close', () => job.clients.delete(res));
+  req.on('close', () => {
+    clearInterval(keepalive);
+    job.clients.delete(res);
+  });
 });
 
 // GET /api/ask/sessions/:appSlug
