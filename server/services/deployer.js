@@ -1,5 +1,5 @@
 import { execFileSync } from 'child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, unlinkSync, symlinkSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, unlinkSync, symlinkSync, writeFileSync } from 'fs';
 import { join, resolve } from 'path';
 import { getDb } from '../db.js';
 import { decrypt } from './encryption.js';
@@ -213,6 +213,18 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
       appendLog('Using app-provided Dockerfile (validated)');
     } else {
       appendLog('Generated Dockerfile (Node Alpine, non-root)');
+    }
+
+    // Write VITE_* vars to .env.production so Vite embeds them at build time.
+    // These are public by nature (they end up in the JS bundle regardless).
+    const viteVars = envVars
+      .filter(v => v.key.startsWith('VITE_'))
+      .map(v => { try { return { key: v.key, val: decrypt(v.value_encrypted) }; } catch { return null; } })
+      .filter(Boolean);
+    if (viteVars.length) {
+      const dotenv = viteVars.map(v => `${v.key}=${v.val}`).join('\n') + '\n';
+      writeFileSync(join(releaseDir, '.env.production'), dotenv, 'utf8'); // nosemgrep: path-join-resolve-traversal — releaseDir is a validated internal path
+      appendLog(`Injected ${viteVars.length} VITE_* var(s) into .env.production for build`);
     }
 
     appendLog('Building docker image...');
