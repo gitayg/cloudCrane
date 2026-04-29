@@ -125,6 +125,19 @@ router.post('/jobs/:jobId/retry', requireAdmin, auditMiddleware('appstudio.retry
 });
 
 /**
+ * DELETE /api/appstudio/jobs/:jobId - Delete a job record
+ */
+router.delete('/jobs/:jobId', requireAdmin, auditMiddleware('appstudio.delete-job'), (req, res) => {
+  const db = getDb();
+  const job = db.prepare('SELECT * FROM enhancement_jobs WHERE id = ?').get(req.params.jobId);
+  if (!job) throw new AppError('Job not found', 404, 'NOT_FOUND');
+  if (job.status === 'running') throw new AppError('Cannot delete a running job', 400, 'JOB_RUNNING');
+
+  db.prepare('DELETE FROM enhancement_jobs WHERE id = ?').run(job.id);
+  res.json({ message: 'Job deleted' });
+});
+
+/**
  * GET /api/appstudio/:id - Full enhancement detail with plan + jobs
  */
 router.get('/:id', (req, res) => {

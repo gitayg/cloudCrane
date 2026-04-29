@@ -500,6 +500,18 @@ async function showDetail(id) {
         }; }(j.id, e.id));
         row.appendChild(retryBtn);
       }
+      if (j.status !== 'running') {
+        var delBtn = document.createElement('button');
+        delBtn.textContent = '✕'; delBtn.title = 'Delete job';
+        delBtn.style.cssText = 'margin-left:6px;font-size:.72rem;padding:2px 7px;color:var(--red);background:none;border:1px solid var(--red);border-radius:4px;cursor:pointer';
+        delBtn.addEventListener('click', function(jid, eid) { return async function() {
+          if (!confirm('Delete job JOB-' + String(jid).padStart(4,'0') + '?')) return;
+          var r = await apiDelete('/api/appstudio/jobs/' + jid);
+          if (r.error) { alert(r.error); return; }
+          showDetail(eid);
+        }; }(j.id, e.id));
+        row.appendChild(delBtn);
+      }
       panel.appendChild(row);
     }
   }
@@ -540,6 +552,17 @@ async function renderJobs(el) {
     var s2 = document.createElement('span'); s2.textContent = (j.started_at || j.created_at || '').slice(0, 19); meta.appendChild(s2);
     if (j.error_message) { var s3 = document.createElement('span'); s3.style.color = 'var(--red)'; s3.textContent = j.error_message.slice(0, 100); meta.appendChild(s3); }
     card.appendChild(meta);
+    if (j.status !== 'running') {
+      var jdelBtn = document.createElement('button');
+      jdelBtn.textContent = 'Delete'; jdelBtn.style.cssText = 'margin-top:8px;font-size:.72rem;padding:2px 10px;color:var(--red);background:none;border:1px solid var(--red);border-radius:4px;cursor:pointer';
+      jdelBtn.addEventListener('click', function(jid) { return async function() {
+        if (!confirm('Delete job JOB-' + String(jid).padStart(4,'0') + '?')) return;
+        var r = await apiDelete('/api/appstudio/jobs/' + jid);
+        if (r.error) { alert(r.error); return; }
+        renderJobs(el);
+      }; }(j.id));
+      card.appendChild(jdelBtn);
+    }
     el.appendChild(card);
   }
 }
