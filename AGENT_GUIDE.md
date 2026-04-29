@@ -143,10 +143,13 @@ fetch('https://your-crane-domain.com/api/identity/verify?app=myapp', ...);
 ```javascript
 import { defineConfig } from 'vite';
 export default defineConfig({
-  base: process.env.APP_BASE_PATH || '/',
+  base: process.env.APP_BASE_PATH || './',
 });
 ```
 This makes `import.meta.env.BASE_URL` resolve to `/{slug}/` in your built code.
+
+> **Vite fallback must be `'./'`, not `'/'`.**
+> AppCrane injects `APP_BASE_PATH` into the generated Dockerfile before the build step. If you ship a custom Dockerfile, this injection does not happen — Vite falls back to whatever the `|| ...` value is. Using `'/'` causes a MIME type error: the browser requests `/{slug}/assets/index.js`, the SPA catch-all serves `index.html` instead, and the JS never executes. Using `'./'` makes all asset paths relative so they resolve correctly at any sub-path even without the env var.
 
 **Create React App**: `PUBLIC_URL` is read automatically — no config change needed, but you must reference assets via `process.env.PUBLIC_URL` (e.g. `<img src={process.env.PUBLIC_URL + '/logo.png'}>`), not as plain `/logo.png`.
 
