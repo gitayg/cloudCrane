@@ -198,6 +198,7 @@ const { spawnSync } = require('child_process');
 const fs = require('fs');
 
 const model = process.env.STUDIO_MODEL;
+const apiKey = fs.readFileSync('/studio/api_key', 'utf8').trim();
 
 process.chdir('/workspace');
 console.log('[studio] Coder agent starting (model: ' + model + ')…');
@@ -207,6 +208,7 @@ const claudeEnv = {
   ...process.env,
   HOME: '/home/studio',
   PATH: '/usr/local/bin:/usr/bin:/bin',
+  ANTHROPIC_API_KEY: apiKey,
 };
 const result = spawnSync('claude', [
   '-p', prompt,
@@ -286,6 +288,7 @@ export async function generateCode({ jobId, app, enhancementId, plan, summary, a
 
   writeFileSync(join(studioDir, 'prompt.txt'), buildPrompt({ plan, summary, agentContext, contextDoc, enhancementMessage })); // nosemgrep
   writeFileSync(join(studioDir, 'runner.js'), buildRunnerScript()); // nosemgrep
+  writeFileSync(join(studioDir, 'api_key'), process.env.ANTHROPIC_API_KEY || '', { mode: 0o600 }); // nosemgrep — key written to ro-mounted dir, not passed via docker env
   if (contextDoc) onLog?.(`[studio] Injected codebase context (${contextDoc.length} chars) — coder will skip orientation exploration`);
 
   const containerName = `appcrane-studio-${jobId}`;
@@ -298,7 +301,6 @@ export async function generateCode({ jobId, app, enhancementId, plan, summary, a
     '--label', 'appcrane.container.type=job',
     '--label', `enhancement_id=${enhancementId}`,
     '--memory=2g', '--cpus=1',
-    '-e', `ANTHROPIC_API_KEY=${process.env.ANTHROPIC_API_KEY}`,
     '-e', `STUDIO_MODEL=${GEN_MODEL}`,
     '-v', `${workspaceDir}:/workspace`,   // rw — Claude Code writes files here
     '-v', `${studioDir}:/studio:ro`,      // ro — prompt + runner only
@@ -314,9 +316,10 @@ export async function generateCode({ jobId, app, enhancementId, plan, summary, a
   return new Promise((resolve, reject) => {
     const child = spawn('docker', containerArgs, { stdio: 'pipe' });
 
-    let timedOut           = false;
-    let codingDoneHandled  = false;
-    let pendingCodingError = null;
+    let timedOut            = false;
+    let codingDoneHandled   = false;
+    let codingDonePromise   = null;
+    let pendingCodingError  = null;
 
     const timer = setTimeout(() => {
       timedOut = true;
@@ -324,18 +327,22 @@ export async function generateCode({ jobId, app, enhancementId, plan, summary, a
       child.kill('SIGTERM');
     }, GEN_TIMEOUT_MS + 60000);
 
-    // Poll every 2s for the sentinel file written by the runner when coding is done
-    const sentinelPoll = setInterval(async () => {
+    // Poll every 2s for the sentinel file written by the runner when coding is done.
+    // codingDonePromise is captured so the close handler can await it if the container
+    // exits while the async git work is still in flight.
+    const sentinelPoll = setInterval(() => {
       if (codingDoneHandled || timedOut) return;
       if (existsSync(sentinelPath)) {
         codingDoneHandled = true;
         clearInterval(sentinelPoll);
         onLog?.('[studio] Coding complete — committing and pushing…');
-        try {
-          await onCodingDone?.(workspaceDir, branchName);
-        } catch (err) {
-          pendingCodingError = err;
-        }
+        codingDonePromise = (async () => {
+          try {
+            await onCodingDone?.(workspaceDir, branchName);
+          } catch (err) {
+            pendingCodingError = err;
+          }
+        })();
       }
     }, 2000);
 
@@ -350,6 +357,8 @@ export async function generateCode({ jobId, app, enhancementId, plan, summary, a
 
     child.on('close', async (code) => {
       clearTimeout(timer); clearInterval(sentinelPoll);
+      // Await any in-flight onCodingDone before making decisions
+      if (codingDonePromise) await codingDonePromise;
       if (pendingCodingError) return reject(pendingCodingError);
       if (timedOut)           return reject(new Error('Code generation timed out'));
       // Final sentinel check — file may have been written in the last poll window before exit

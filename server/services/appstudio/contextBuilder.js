@@ -62,7 +62,7 @@ function collectKeyFiles(repoDir, fileTree) {
     !seen.has(f) &&
     /\.(js|ts|py|go|sql)$/.test(f) &&
     !f.includes('node_modules') && !f.includes('.git') &&
-    (/route|model|schema|controller|service|store|api/i.test(f))
+    (/route|model|schema|controller|service|store|api|App\.[jt]sx?$|\/pages\/|\/views\/|\/screens\//i.test(f)))
   ).slice(0, 6);
 
   for (const p of extras) {

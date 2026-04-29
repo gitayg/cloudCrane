@@ -77,12 +77,14 @@ router.post('/:id/plan-feedback', auditMiddleware('appstudio.plan-feedback'), (r
   if (!enh) throw new AppError('Enhancement not found', 404, 'NOT_FOUND');
 
   const isAdmin = req.user?.role === 'admin';
-  const field = isAdmin ? 'admin_comments' : 'user_comments';
-  const existing = enh[field] || '';
+  const existing = isAdmin ? (enh.admin_comments || '') : (enh.user_comments || '');
   const updated = existing + `\n[${new Date().toISOString()}] ${comment.trim()}`;
 
-  db.prepare(`UPDATE enhancement_requests SET ${field} = ?, status = 'planning' WHERE id = ?`)
-    .run(updated, enh.id);
+  if (isAdmin) {
+    db.prepare("UPDATE enhancement_requests SET admin_comments = ?, status = 'planning' WHERE id = ?").run(updated, enh.id);
+  } else {
+    db.prepare("UPDATE enhancement_requests SET user_comments = ?, status = 'planning' WHERE id = ?").run(updated, enh.id);
+  }
   db.prepare('INSERT INTO enhancement_jobs (enhancement_id, phase) VALUES (?, ?)').run(enh.id, 'revise_plan');
 
   res.json({ message: 'Feedback saved, re-planning queued' });

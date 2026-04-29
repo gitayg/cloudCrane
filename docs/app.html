@@ -218,7 +218,7 @@ th{color:var(--dim);font-weight:500}
       <div style="margin-bottom:8px">
         <label style="font-size:.78rem;color:var(--dim);display:block;margin-bottom:5px">URL Slug (path)</label>
         <div style="display:flex;gap:8px">
-          <input type="text" id="infoSlug" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;flex:1;font-size:.88rem;font-family:monospace">
+          <input type="text" id="infoSlug" maxlength="48" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:6px;flex:1;font-size:.88rem;font-family:monospace">
           <button class="btn btn-sm btn-dim" onclick="renameSlug()">Rename</button>
         </div>
         <div style="font-size:.75rem;color:var(--dim);margin-top:5px">Renames the URL path. Old path redirects to new one. Triggers a redeploy.</div>

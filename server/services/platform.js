@@ -1,5 +1,6 @@
 import { platform, totalmem, freemem, cpus, hostname } from 'os';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
+import { readFileSync } from 'fs';
 import log from '../utils/logger.js';
 
 export const isLinux = () => platform() === 'linux';
@@ -14,11 +15,11 @@ export function getSystemInfo() {
   let diskTotal = 0, diskFree = 0;
   try {
     if (isLinux()) {
-      const df = execSync("df -B1 / | tail -1").toString().trim().split(/\s+/);
+      const df = execFileSync('df', ['-B1', '/'], { encoding: 'utf8', stdio: 'pipe' }).trim().split('\n').pop().split(/\s+/);
       diskTotal = parseInt(df[1]) || 0;
       diskFree = parseInt(df[3]) || 0;
     } else {
-      const df = execSync("df -k / | tail -1").toString().trim().split(/\s+/);
+      const df = execFileSync('df', ['-k', '/'], { encoding: 'utf8', stdio: 'pipe' }).trim().split('\n').pop().split(/\s+/);
       diskTotal = (parseInt(df[1]) || 0) * 1024;
       diskFree = (parseInt(df[3]) || 0) * 1024;
     }
@@ -30,10 +31,11 @@ export function getSystemInfo() {
   let cpuPercent = 0;
   try {
     if (isLinux()) {
-      const load = execSync("cat /proc/loadavg").toString().split(' ');
+      const load = readFileSync('/proc/loadavg', 'utf8').split(' ');
       cpuPercent = Math.round((parseFloat(load[0]) / cpuCount) * 100);
     } else {
-      cpuPercent = Math.round(parseFloat(execSync("ps -A -o %cpu | awk '{s+=$1} END {print s}'").toString().trim()));
+      const lines = execFileSync('ps', ['-A', '-o', '%cpu'], { encoding: 'utf8', stdio: 'pipe' }).trim().split('\n').slice(1);
+      cpuPercent = Math.round(lines.reduce((sum, l) => sum + (parseFloat(l) || 0), 0));
     }
   } catch (e) {
     cpuPercent = 0;

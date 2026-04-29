@@ -183,8 +183,10 @@ router.post('/:id/delete', (req, res) => {
   const active = db.prepare("SELECT 1 FROM enhancement_jobs WHERE enhancement_id = ? AND status IN ('queued', 'running') LIMIT 1").get(id);
   if (active) throw new AppError('Cannot delete a request with an active job — wait for it to finish first', 409, 'JOB_ACTIVE');
 
-  db.prepare('DELETE FROM enhancement_jobs WHERE enhancement_id = ?').run(id);
-  db.prepare('DELETE FROM enhancement_requests WHERE id = ?').run(id);
+  db.transaction(() => {
+    db.prepare('DELETE FROM enhancement_jobs WHERE enhancement_id = ?').run(id);
+    db.prepare('DELETE FROM enhancement_requests WHERE id = ?').run(id);
+  })();
   res.json({ message: 'Deleted' });
 });
 

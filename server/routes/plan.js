@@ -202,11 +202,15 @@ router.post('/:enhancementId/feedback', (req, res) => {
   if (!comment?.trim()) throw new AppError('comment is required', 400, 'VALIDATION');
 
   const db = getDb();
-  const field = user.role === 'admin' ? 'admin_comments' : 'user_comments';
-  const existing = enh[field] || '';
+  const isAdmin = user.role === 'admin';
+  const existing = isAdmin ? (enh.admin_comments || '') : (enh.user_comments || '');
   const updated = existing + `\n[${new Date().toISOString()}] ${comment.trim()}`;
 
-  db.prepare(`UPDATE enhancement_requests SET ${field} = ?, status = 'planning' WHERE id = ?`).run(updated, id);
+  if (isAdmin) {
+    db.prepare("UPDATE enhancement_requests SET admin_comments = ?, status = 'planning' WHERE id = ?").run(updated, id);
+  } else {
+    db.prepare("UPDATE enhancement_requests SET user_comments = ?, status = 'planning' WHERE id = ?").run(updated, id);
+  }
   db.prepare('INSERT INTO enhancement_jobs (enhancement_id, phase) VALUES (?, ?)').run(id, 'revise_plan');
 
   res.json({ message: 'Feedback submitted, re-planning queued' });

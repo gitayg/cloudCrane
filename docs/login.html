@@ -2565,7 +2565,7 @@ async function _fetchJobDetail() {
     });
     var d = await r.json();
     var msgsEl = document.getElementById('jobDetailMessages');
-    if (!r.ok) { msgsEl.innerHTML = '<div class="jd-sys red">' + ((d.error && d.error.message) || 'Error loading job') + '</div>'; return; }
+    if (!r.ok) { var errDiv = document.createElement('div'); errDiv.className = 'jd-sys red'; errDiv.textContent = (d.error && d.error.message) || 'Error loading job'; msgsEl.textContent = ''; msgsEl.appendChild(errDiv); return; }
 
     var lines = [];
     if (d.output && Array.isArray(d.output.log)) {

@@ -60,7 +60,7 @@ async function tick() {
       const job = claimJob(['plan', 'revise_plan']);
       if (!job) break;
       _activePlans++;
-      runJob(job).finally(() => { _activePlans--; });
+      runJob(job).finally(() => { _activePlans--; }).catch(err => log.error(`AppStudio plan job error: ${err.message}`));
     }
 
     // Run at most one code/build/open_pr job at a time
@@ -68,7 +68,7 @@ async function tick() {
       const job = claimJob(['code', 'build', 'open_pr']);
       if (job) {
         _activeCodeJob = true;
-        runJob(job).finally(() => { _activeCodeJob = false; });
+        runJob(job).finally(() => { _activeCodeJob = false; }).catch(err => log.error(`AppStudio code job error: ${err.message}`));
       }
     }
   } catch (err) {
@@ -188,26 +188,27 @@ async function handlePlan(job) {
   });
 
   const costCents = Math.ceil(result.costUsd * 100);
-  db.prepare(`
-    UPDATE enhancement_requests
-    SET status = 'pending_user_review_plan',
-        ai_plan_json = ?,
-        ai_cost_estimate = ?,
-        cost_tokens = cost_tokens + ?,
-        cost_usd_cents = cost_usd_cents + ?,
-        ai_log = COALESCE(ai_log, '') || ?
-    WHERE id = ?
-  `).run(
-    JSON.stringify(result.plan),
-    JSON.stringify({ tokensIn: result.tokensIn, tokensOut: result.tokensOut, costUsd: result.costUsd }),
-    result.tokensIn + result.tokensOut,
-    costCents,
-    `\n[${new Date().toISOString()}] Plan generated ($${result.costUsd.toFixed(4)}, ${result.tokensIn + result.tokensOut} tokens)\n${result.summary}\n`,
-    job.enhancement_id,
-  );
-
-  db.prepare('UPDATE enhancement_jobs SET output_json = ?, cost_tokens = ?, cost_usd_cents = ? WHERE id = ?')
-    .run(JSON.stringify(result.plan), result.tokensIn + result.tokensOut, costCents, job.id);
+  db.transaction(() => {
+    db.prepare(`
+      UPDATE enhancement_requests
+      SET status = 'pending_user_review_plan',
+          ai_plan_json = ?,
+          ai_cost_estimate = ?,
+          cost_tokens = cost_tokens + ?,
+          cost_usd_cents = cost_usd_cents + ?,
+          ai_log = COALESCE(ai_log, '') || ?
+      WHERE id = ?
+    `).run(
+      JSON.stringify(result.plan),
+      JSON.stringify({ tokensIn: result.tokensIn, tokensOut: result.tokensOut, costUsd: result.costUsd }),
+      result.tokensIn + result.tokensOut,
+      costCents,
+      `\n[${new Date().toISOString()}] Plan generated ($${result.costUsd.toFixed(4)}, ${result.tokensIn + result.tokensOut} tokens)\n${result.summary}\n`,
+      job.enhancement_id,
+    );
+    db.prepare('UPDATE enhancement_jobs SET output_json = ?, cost_tokens = ?, cost_usd_cents = ? WHERE id = ?')
+      .run(JSON.stringify(result.plan), result.tokensIn + result.tokensOut, costCents, job.id);
+  })();
 
   log.info(`AppStudio plan ready for enh #${job.enhancement_id} ($${result.costUsd.toFixed(4)})`);
 }
@@ -330,35 +331,39 @@ async function handleCode(job) {
     }
 
     // Update DB immediately — container may still be running at this point
-    db.prepare('UPDATE enhancement_jobs SET output_json = ? WHERE id = ?')
-      .run(JSON.stringify({ log: logLines.slice(-200), branchName }), job.id);
-    db.prepare(`
-      UPDATE enhancement_requests
-      SET status = 'pushing', branch_name = ?, fix_version = ?,
-          ai_log = COALESCE(ai_log, '') || ?
-      WHERE id = ?
-    `).run(
-      branchName, branchName,
-      `\n[${new Date().toISOString()}] Code generated and pushed to branch ${branchName}\n`,
-      enh.id,
-    );
+    db.transaction(() => {
+      db.prepare('UPDATE enhancement_jobs SET output_json = ? WHERE id = ?')
+        .run(JSON.stringify({ log: logLines.slice(-200), branchName }), job.id);
+      db.prepare(`
+        UPDATE enhancement_requests
+        SET status = 'pushing', branch_name = ?, fix_version = ?,
+            ai_log = COALESCE(ai_log, '') || ?
+        WHERE id = ?
+      `).run(
+        branchName, branchName,
+        `\n[${new Date().toISOString()}] Code generated and pushed to branch ${branchName}\n`,
+        enh.id,
+      );
+    })();
     onLog(`[studio:git] Enhancement #${enh.id} status → pushing`);
   };
 
-  const { branchName: _b } = await generateCode({
-    jobId: job.id,
-    app,
-    enhancementId: enh.id,
-    plan,
-    summary: plan.summary || enh.message,
-    agentContext,
-    contextDoc,
-    enhancementMessage: enh.message,
-    onLog,
-    onCodingDone,
-  });
-
-  cleanupWorkspace(job.id);
+  try {
+    await generateCode({
+      jobId: job.id,
+      app,
+      enhancementId: enh.id,
+      plan,
+      summary: plan.summary || enh.message,
+      agentContext,
+      contextDoc,
+      enhancementMessage: enh.message,
+      onLog,
+      onCodingDone,
+    });
+  } finally {
+    cleanupWorkspace(job.id);
+  }
 
   if (noChanges) {
     const note = `\n[${new Date().toISOString()}] Claude made no file changes — enhancement appears already implemented or no action needed.\n`;
@@ -392,25 +397,27 @@ async function handleCode(job) {
     return;
   }
 
-  db.prepare('INSERT INTO enhancement_jobs (enhancement_id, phase) VALUES (?, ?)').run(enh.id, 'build');
+  db.transaction(() => {
+    db.prepare('INSERT INTO enhancement_jobs (enhancement_id, phase) VALUES (?, ?)').run(enh.id, 'build');
 
-  // Auto-replan any enhancements for the same app whose plan is now stale
-  if (enh.app_slug) {
-    const stale = db.prepare(`
-      SELECT id FROM enhancement_requests
-      WHERE app_slug = ? AND status = 'pending_user_review_plan' AND id != ?
-    `).all(enh.app_slug, enh.id);
-    for (const s of stale) {
-      db.prepare(`
-        UPDATE enhancement_requests
-        SET status = 'planning', ai_plan_json = NULL,
-            ai_log = COALESCE(ai_log, '') || ?
-        WHERE id = ?
-      `).run(`\n[${new Date().toISOString()}] Plan invalidated — new code committed for ${enh.app_slug} (enh #${enh.id}). Re-planning…\n`, s.id);
-      db.prepare('INSERT INTO enhancement_jobs (enhancement_id, phase) VALUES (?, ?)').run(s.id, 'plan');
-      log.info(`AppStudio: stale plan re-queued for enh #${s.id} after code commit on ${enh.app_slug}`);
+    // Auto-replan any enhancements for the same app whose plan is now stale
+    if (enh.app_slug) {
+      const stale = db.prepare(`
+        SELECT id FROM enhancement_requests
+        WHERE app_slug = ? AND status = 'pending_user_review_plan' AND id != ?
+      `).all(enh.app_slug, enh.id);
+      for (const s of stale) {
+        db.prepare(`
+          UPDATE enhancement_requests
+          SET status = 'planning', ai_plan_json = NULL,
+              ai_log = COALESCE(ai_log, '') || ?
+          WHERE id = ?
+        `).run(`\n[${new Date().toISOString()}] Plan invalidated — new code committed for ${enh.app_slug} (enh #${enh.id}). Re-planning…\n`, s.id);
+        db.prepare('INSERT INTO enhancement_jobs (enhancement_id, phase) VALUES (?, ?)').run(s.id, 'plan');
+        log.info(`AppStudio: stale plan re-queued for enh #${s.id} after code commit on ${enh.app_slug}`);
+      }
     }
-  }
+  })();
 }
 
 async function handleBuild(job) {
