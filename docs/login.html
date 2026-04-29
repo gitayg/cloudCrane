@@ -102,6 +102,18 @@ input:focus{border-color:var(--accent)}
 .btn-enhance.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 .peek-hint{position:fixed;top:52px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;padding:6px 14px;border-radius:6px;font-size:.8rem;z-index:150;box-shadow:0 4px 12px #0004;display:none}
 .peek-hint.active{display:block}
+.updates-popup{display:none;position:absolute;top:44px;left:50%;transform:translateX(-50%);z-index:140;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px #0006;min-width:360px;max-width:min(560px,92vw);animation:updatesSlide .22s ease}
+@keyframes updatesSlide{from{opacity:0;transform:translateX(-50%) translateY(-6px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+.updates-hdr{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border)}
+.updates-title{font-size:.85rem;font-weight:600}
+.updates-list{padding:6px 0}
+.updates-item{display:grid;grid-template-columns:auto auto 1fr;align-items:baseline;gap:8px;padding:6px 14px;border-bottom:1px solid var(--border);font-size:.82rem}
+.updates-item:last-child{border-bottom:none}
+.updates-ver{font-family:monospace;font-weight:700;color:var(--accent)}
+.updates-date{color:var(--dim);font-size:.75rem;white-space:nowrap}
+.updates-msg{color:var(--text);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.updates-close{background:none;border:none;color:var(--dim);cursor:pointer;font-size:1.1rem;padding:0 2px;line-height:1;flex-shrink:0}
+.updates-close:hover{color:var(--text)}
 .app-frame iframe{flex:1;border:none;background:#fff}
 .presence-wrap{display:flex;align-items:center;gap:4px;position:relative;cursor:default}
 .presence-avatars{display:flex;align-items:center}
@@ -305,6 +317,15 @@ input:focus{border-color:var(--accent)}
     </div>
   </div>
   <div id="peekHint" class="peek-hint">🎯 Click any element in the page to capture it as context · Press <b>Esc</b> to cancel</div>
+
+  <!-- What's new popup -->
+  <div id="updatesPopup" class="updates-popup">
+    <div class="updates-hdr">
+      <span class="updates-title" id="updatesTitle"></span>
+      <button class="updates-close" onclick="closeUpdatesPopup()" title="Dismiss">×</button>
+    </div>
+    <div class="updates-list" id="updatesList"></div>
+  </div>
 
   <!-- Ask Claude panel -->
   <div id="askPanel" class="ask-panel">
@@ -1154,6 +1175,70 @@ function openApp(url, name, slug, hasIcon, appData) {
     }).catch(function() {});
   }
   if (slug) startAskContainerPoll(slug);
+  closeUpdatesPopup();
+  if (slug) checkAppUpdates(slug, name);
+}
+
+let _updatesTimer = null;
+
+async function checkAppUpdates(slug, appName) {
+  if (!sessionToken) return;
+  try {
+    const r = await fetch(API + '/api/identity/app-updates/' + encodeURIComponent(slug), {
+      headers: { 'Authorization': 'Bearer ' + sessionToken },
+    });
+    if (!r.ok) return;
+    const data = await r.json();
+    if (data.is_first_visit || !data.updates || !data.updates.length) return;
+    showUpdatesPopup(appName, data.last_visit_at, data.updates);
+  } catch(e) {}
+}
+
+function showUpdatesPopup(appName, lastVisitAt, updates) {
+  const popup = document.getElementById('updatesPopup');
+  const list  = document.getElementById('updatesList');
+  const title = document.getElementById('updatesTitle');
+
+  var since = '';
+  if (lastVisitAt) {
+    var d = new Date(lastVisitAt);
+    since = ' since ' + d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+  title.textContent = '🆕 ' + updates.length + ' update' + (updates.length !== 1 ? 's' : '') + ' in ' + appName + since;
+
+  list.textContent = '';
+  updates.forEach(function(u) {
+    var item = document.createElement('div');
+    item.className = 'updates-item';
+
+    var ver = document.createElement('span');
+    ver.className = 'updates-ver';
+    ver.textContent = u.version ? 'v' + u.version : '—';
+    item.appendChild(ver);
+
+    var date = document.createElement('span');
+    date.className = 'updates-date';
+    date.textContent = u.finished_at
+      ? new Date(u.finished_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+      : '';
+    item.appendChild(date);
+
+    var msg = document.createElement('span');
+    msg.className = 'updates-msg';
+    msg.textContent = u.commit_message || u.commit_hash || '';
+    item.appendChild(msg);
+
+    list.appendChild(item);
+  });
+
+  popup.style.display = '';
+  clearTimeout(_updatesTimer);
+  _updatesTimer = setTimeout(closeUpdatesPopup, 12000);
+}
+
+function closeUpdatesPopup() {
+  clearTimeout(_updatesTimer);
+  document.getElementById('updatesPopup').style.display = 'none';
 }
 
 function closeApp() {
@@ -1161,6 +1246,7 @@ function closeApp() {
   closeAskPanel();
   closePlanPanel();
   closeJobsPanel();
+  closeUpdatesPopup();
   stopAskContainerPoll();
   document.getElementById('appFrame').classList.remove('open');
   document.body.style.overflow = '';

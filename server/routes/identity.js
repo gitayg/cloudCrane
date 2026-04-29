@@ -383,4 +383,49 @@ router.get('/preview-as/:userId', (req, res) => {
   res.json({ user: target, apps });
 });
 
+/**
+ * GET /api/identity/app-updates/:slug
+ * Returns production deployments since the user's last visit to this app,
+ * then bumps last_visit_at to now.
+ * Auth: Authorization: Bearer TOKEN
+ */
+router.get('/app-updates/:slug', (req, res) => {
+  const token = (req.headers.authorization || '').replace('Bearer ', '').trim();
+  if (!token) throw new AppError('Authorization required', 401, 'UNAUTHORIZED');
+
+  const db = getDb();
+  const session = db.prepare(`
+    SELECT u.id as user_id FROM identity_sessions s
+    JOIN users u ON s.user_id = u.id
+    WHERE s.token_hash = ? AND s.expires_at > datetime('now')
+  `).get(hashApiKey(token));
+  if (!session) throw new AppError('Invalid or expired token', 401, 'INVALID_TOKEN');
+
+  const app = db.prepare('SELECT id, name FROM apps WHERE slug = ?').get(req.params.slug);
+  if (!app) throw new AppError('App not found', 404, 'NOT_FOUND');
+
+  const lastVisit = db.prepare(
+    'SELECT last_visit_at FROM app_last_visit WHERE user_id = ? AND app_id = ?'
+  ).get(session.user_id, app.id);
+
+  const lastVisitAt = lastVisit ? lastVisit.last_visit_at : null;
+
+  const updates = lastVisitAt ? db.prepare(`
+    SELECT version, commit_hash, commit_message, finished_at
+    FROM deployments
+    WHERE app_id = ? AND env = 'production' AND status = 'live'
+      AND finished_at > ?
+    ORDER BY finished_at DESC
+    LIMIT 10
+  `).all(app.id, lastVisitAt) : [];
+
+  db.prepare(`
+    INSERT INTO app_last_visit (user_id, app_id, last_visit_at)
+    VALUES (?, ?, datetime('now'))
+    ON CONFLICT(user_id, app_id) DO UPDATE SET last_visit_at = datetime('now')
+  `).run(session.user_id, app.id);
+
+  res.json({ last_visit_at: lastVisitAt, is_first_visit: !lastVisitAt, updates });
+});
+
 export default router;
