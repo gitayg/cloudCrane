@@ -236,6 +236,15 @@ router.get('/verify', (req, res) => {
     throw new AppError('You do not have access to this app', 403, 'FORBIDDEN');
   }
 
+  // Record visit (one row per user/app/day via UPSERT — no-op if already exists)
+  const visitAppId = appSlug
+    ? db.prepare('SELECT id FROM apps WHERE slug = ?').get(appSlug)?.id
+    : session.app_id;
+  if (visitAppId) {
+    const today = new Date().toISOString().slice(0, 10);
+    db.prepare('INSERT OR IGNORE INTO app_visits (user_id, app_id, day) VALUES (?, ?, ?)').run(session.user_id, visitAppId, today);
+  }
+
   res.json({
     user: {
       id: session.user_id,

@@ -132,15 +132,15 @@ router.get('/dashboard/app-activity', requireAdmin, (req, res) => {
     days.push(d.toISOString().slice(0, 10));
   }
 
-  // Session counts grouped by app + day
+  // Unique visitor counts grouped by app + day (from app_visits, deduplicated per user/app/day)
   const rows = db.prepare(`
     SELECT a.slug, a.name,
-           date(s.created_at) AS day,
+           v.day,
            COUNT(*) AS count
-    FROM identity_sessions s
-    JOIN apps a ON a.id = s.app_id
-    WHERE date(s.created_at) >= date('now', '-6 days')
-    GROUP BY a.slug, day
+    FROM app_visits v
+    JOIN apps a ON a.id = v.app_id
+    WHERE v.day >= date('now', '-6 days')
+    GROUP BY a.slug, v.day
   `).all();
 
   // Build per-app series
