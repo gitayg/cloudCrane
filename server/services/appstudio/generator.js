@@ -45,9 +45,16 @@ async function ensureStudioImage(onLog) {
     'USER studio',
   ].join('\n'));
 
-  execFileSync('docker', ['build', '-t', STUDIO_IMAGE, buildDir], {
-    stdio: 'pipe',
-    timeout: 600000,
+  await new Promise((res, rej) => {
+    const build = spawn('docker', ['build', '-t', STUDIO_IMAGE, buildDir], {
+      stdio: 'pipe',
+      env: { ...process.env, DOCKER_BUILDKIT: '1' },
+    });
+    const emit = (l) => { if (l.trim()) onLog?.(`[build] ${l}`); };
+    build.stdout.on('data', (c) => c.toString().split('\n').forEach(emit));
+    build.stderr.on('data', (c) => c.toString().split('\n').forEach(emit));
+    build.on('error', rej);
+    build.on('close', (code) => code === 0 ? res() : rej(new Error(`docker build failed (exit ${code})`)));
   });
 
   onLog?.('[studio] Studio image ready');
