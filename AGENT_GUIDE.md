@@ -283,7 +283,7 @@ The `POST /api/apps/:slug/deploy/upload` endpoint accepts a pre-built artifact f
 | `commit_sha` | no | Full or short SHA (stored in deploy record, fixes "unknown" hash) |
 | `commit_message` | no | Commit message (stored in deploy record) |
 
-The bundle must contain `deployhub.json` in its root. AppCrane unpacks it, runs `npm install`, builds the frontend, writes the `.env`, starts via PM2, and swaps the `current` symlink — identical to a GitHub-sourced deploy.
+The bundle must contain `deployhub.json` in its root. AppCrane unpacks it, runs `npm install`, builds the frontend, writes the `.env`, starts the container via Docker, and swaps the `current` symlink — identical to a GitHub-sourced deploy.
 
 **GitHub Actions example:**
 

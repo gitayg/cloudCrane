@@ -556,7 +556,7 @@ router.post('/:slug/icon', requireAuth, requireAppAccess, async (req, res) => {
 });
 
 /**
- * POST /api/reconcile - Register orphaned PM2/filesystem apps into the DB and reload Caddy
+ * POST /api/reconcile - Register orphaned filesystem apps into the DB and reload Caddy
  */
 router.post('/reconcile', requireAdmin, async (req, res) => {
   const dryRun = req.query.dry_run === '1' || req.body?.dry_run === true;

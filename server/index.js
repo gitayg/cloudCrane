@@ -331,40 +331,6 @@ app.post('/api/self-update', requireAuth, requireAdmin, async (req, res) => {
     const newPkg = JSON.parse(readFileSync(join(cwd, 'package.json'), 'utf8'));
     const targetVersion = newPkg.version;
 
-    // v1.3 → v1.4 transition: write systemd unit + install docker, but DON'T kill pm2 yet
-    // (that would kill this process before cutover finishes). Cutover runs detached below.
-    const needsHostUpgrade = !existsSync('/etc/systemd/system/appcrane.service');
-    const upgradeScript = join(cwd, 'scripts/upgrade-to-docker.sh');
-    const runUser = process.env.SUDO_USER || process.env.USER || 'root';
-    const isRoot = !process.getuid || process.getuid() === 0;
-
-    if (needsHostUpgrade) {
-      if (!isRoot) {
-        throw new Error('Upgrade to v1.4 requires root to install Docker + systemd unit. Run install.sh manually.');
-      }
-      if (!existsSync(upgradeScript)) {
-        throw new Error(`Upgrade script missing at ${upgradeScript}`);
-      }
-      log.info('Self-update: running v1.4 prepare phase (install docker, write systemd unit)');
-      execFileSync('bash', [upgradeScript, 'prepare', cwd, runUser], {
-        stdio: 'pipe', timeout: 300000,
-      });
-      log.info('Self-update: prepare complete — systemd unit enabled, not yet started');
-    } else if (isRoot && existsSync(upgradeScript)) {
-      // Already under systemd — run hygiene cleanup on every update so stale
-      // PM2 daemons / pm2-<user>.service files left from a botched migration
-      // get reaped on the next self-update without manual intervention.
-      try {
-        log.info('Self-update: running cleanup phase (kill stray PM2 if any)');
-        execFileSync('bash', [upgradeScript, 'cleanup', cwd, runUser], {
-          stdio: 'pipe', timeout: 60000,
-        });
-      } catch (cleanupErr) {
-        // Non-fatal — log and continue with the update
-        log.warn(`Self-update cleanup failed (continuing): ${cleanupErr.message}`);
-      }
-    }
-
     const dataDir = selfUpdateDataDir();
     if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
     writeFileSync(pendingUpdateFile(), JSON.stringify({
@@ -372,11 +338,10 @@ app.post('/api/self-update', requireAuth, requireAdmin, async (req, res) => {
       target_version: targetVersion,
       started_at: new Date().toISOString(),
       pid: process.pid,
-      host_migrated: needsHostUpgrade,
     }, null, 2));
 
     logAudit(req.user?.id, null, 'self-update-triggered', {
-      from: VERSION, to: targetVersion, git: pullOutput, host_migrated: needsHostUpgrade,
+      from: VERSION, to: targetVersion, git: pullOutput,
     });
     log.info(`Self-update: ${VERSION} → ${targetVersion} (pulled ${pullOutput})`);
 
@@ -384,36 +349,13 @@ app.post('/api/self-update', requireAuth, requireAdmin, async (req, res) => {
       message: 'Update pulled. Restarting...',
       git: pullOutput,
       version: targetVersion,
-      host_migrated: needsHostUpgrade,
     });
 
-    if (needsHostUpgrade) {
-      // Spawn detached cutover helper: kills pm2, starts appcrane.service, verifies health.
-      // MUST survive this process dying when pm2 kills it, so stdio:'ignore' + detached + unref.
-      setTimeout(() => {
-        try {
-          const upgradeScript = join(cwd, 'scripts/upgrade-to-docker.sh');
-          const runUser = process.env.SUDO_USER || process.env.USER || 'root';
-          const logFile = join(selfUpdateDataDir(), 'cutover.log');
-          const fd = openSync(logFile, 'a');
-          const child = spawn('bash', [upgradeScript, 'cutover', cwd, runUser], {
-            detached: true,
-            stdio: ['ignore', fd, fd],
-          });
-          child.unref();
-          log.info(`Self-update: cutover helper spawned (pid ${child.pid}); exiting — systemd will take over`);
-        } catch (e) {
-          log.error(`Self-update: cutover spawn failed: ${e.message}`);
-        }
-        setTimeout(() => process.exit(0), 500);
-      }, 1000);
-    } else {
-      // v1.4+ → v1.4+: already under systemd. Just exit and let Restart=always re-exec us.
-      setTimeout(() => {
-        log.info('Self-update: exiting for systemd restart');
-        process.exit(0);
-      }, 1000);
-    }
+    // Exit and let systemd Restart=always re-exec us.
+    setTimeout(() => {
+      log.info('Self-update: exiting for systemd restart');
+      process.exit(0);
+    }, 1000);
   } catch (e) {
     const detail = e.stderr?.toString().trim() || e.stdout?.toString().trim() || e.message;
     res.status(500).json({ error: { code: 'UPDATE_FAILED', message: detail } });

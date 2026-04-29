@@ -176,13 +176,13 @@ program
     }
   });
 
-// ── Update (git pull + pm2 restart) ──────────────────────────────
+// ── Update (git pull + systemctl restart) ──────────────────────────────
 program
   .command('update')
   .description('Pull latest code from GitHub and restart AppCrane')
   .action(async () => {
     try {
-      const { execSync } = await import('child_process');
+      const { execSync, execFileSync } = await import('child_process');
       const { dirname, join } = await import('path');
       const { fileURLToPath } = await import('url');
       const { readFileSync } = await import('fs');
@@ -218,21 +218,11 @@ program
 
       out.info('Restarting AppCrane...');
       try {
-        const { existsSync } = await import('fs');
-        // Prefer local pm2 binary, fall back to global
-        const localPm2 = join(projectDir, 'node_modules/pm2/bin/pm2');
-        const pm2 = existsSync(localPm2) ? localPm2 : 'pm2';
-        const pm2Opts = { cwd: projectDir, stdio: 'pipe' };
-        // Clean up both legacy and current process names before starting fresh
-        for (const name of ['cloudcrane', 'appcrane']) {
-          try { execSync(`${pm2} delete ${name}`, pm2Opts); } catch (_) {}
-        }
-        execSync(`${pm2} start server/index.js --name appcrane`, pm2Opts);
-        try { execSync(`${pm2} save`, pm2Opts); } catch (_) {}
+        execFileSync('systemctl', ['restart', 'appcrane'], { stdio: 'pipe' });
         out.ok(`AppCrane v${toVersion} restarted!`);
       } catch (e) {
-        out.warn('PM2 restart failed: ' + e.message);
-        out.dim('Try manually: node_modules/pm2/bin/pm2 start server/index.js --name appcrane');
+        out.warn('systemctl restart failed: ' + e.message);
+        out.dim('Try manually: systemctl restart appcrane');
       }
     } catch (e) {
       out.err(`Update failed: ${e.message}`);
@@ -1046,7 +1036,7 @@ program
 // ── Reconcile ──────────────────────────────────────────────────────────────
 program
   .command('reconcile')
-  .description('Register orphaned PM2/filesystem apps into AppCrane DB and reload Caddy')
+  .description('Register orphaned filesystem apps into AppCrane DB and reload Caddy')
   .option('--dry-run', 'Preview what would be registered without making changes')
   .action(async (opts) => {
     try {
@@ -1063,7 +1053,7 @@ program
         out.info('Dry run — no changes will be made.');
       }
 
-      out.info('Scanning PM2 processes and data/apps/ directory...');
+      out.info('Scanning data/apps/ directory...');
       const result = await reconcileOrphanedApps({ dryRun: opts.dryRun });
 
       if (result.orphaned === 0) {
@@ -1079,7 +1069,6 @@ program
             'Slot': app.slot,
             'Prod port': app.ports.prod_be,
             'Sandbox port': app.ports.sand_be,
-            'PM2': app.pm2,
           });
           console.log('');
         }
@@ -1102,11 +1091,7 @@ program
 
         const hasNeedsRestart = result.registered.some(a => a.needs_restart);
         if (hasNeedsRestart) {
-          out.warn('Some apps were not found in PM2. Start them manually:');
-          for (const a of result.registered.filter(r => r.needs_restart)) {
-            out.dim(`  pm2 start <entry> --name ${a.slug}-production -- (set PORT=${a.ports.prod_be})`);
-            out.dim(`  pm2 start <entry> --name ${a.slug}-sandbox   -- (set PORT=${a.ports.sand_be})`);
-          }
+          out.warn('Some apps have no running container. Redeploy them from the dashboard.');
         }
       }
     } catch (e) {

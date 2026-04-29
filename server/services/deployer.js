@@ -74,7 +74,7 @@ function validateManifestCommand(value, field) {
  * 3. npm run build (FE)
  * 4. Write .env file from encrypted vars
  * 5. Symlink shared data dirs
- * 6. Start via PM2 on allocated ports
+ * 6. Start Docker container on allocated ports
  * 7. Health check
  * 8. Swap 'current' symlink
  * 9. Cleanup old releases (keep last 5)

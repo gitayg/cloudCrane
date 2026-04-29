@@ -55,7 +55,7 @@ function readAppMeta(slug, dataDir) {
 }
 
 /**
- * Scan PM2 processes and data/apps/ directory, find slugs missing from the apps table,
+ * Scan data/apps/ directory, find slugs missing from the apps table,
  * and register them. Reloads Caddy after any registrations.
  *
  * @param {{ dryRun?: boolean, dataDir?: string }} opts

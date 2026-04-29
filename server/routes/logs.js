@@ -68,7 +68,7 @@ router.get('/:slug/audit', requireAppAccess, (req, res) => {
 });
 
 /**
- * GET /api/apps/:slug/logs/:env - App runtime logs (from PM2)
+ * GET /api/apps/:slug/logs/:env - App runtime logs
  */
 router.get('/:slug/logs/:env', requireAppAccess, async (req, res) => {
   const { env } = req.params;

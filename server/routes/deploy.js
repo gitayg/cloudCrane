@@ -259,7 +259,7 @@ router.post('/:slug/rollback/:env', requireAppAccess, auditMiddleware('rollback'
  *
  * Copies the sandbox release directory into the production releases tree,
  * rewrites the production .env from prod env_vars, swaps the `current` symlink,
- * and restarts the production PM2 process. Env vars and /data are NOT copied.
+ * and restarts the production container. Env vars and /data are NOT copied.
  */
 router.post('/:slug/promote', requireAppAccess, auditMiddleware('promote'), async (req, res) => {
   const db = getDb();

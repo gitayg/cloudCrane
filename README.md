@@ -50,11 +50,16 @@ cd appCrane
 npm install
 npm link    # makes 'crane' command available globally
 
-# 2. Start the server
-npx pm2 start server/index.js --name appcrane
+# 2. Install and start via systemd
+cp scripts/appcrane.service /etc/systemd/system/appcrane.service
+systemctl daemon-reload
+systemctl enable --now appcrane
 
 # 2.5. (Optional) Set Anthropic API key for AppStudio
-echo 'ANTHROPIC_API_KEY=sk-ant-...' >> .env
+# Add to the systemd unit so it survives restarts:
+systemctl edit appcrane --force
+# Add under [Service]: Environment="ANTHROPIC_API_KEY=sk-ant-..."
+# Then: systemctl daemon-reload && systemctl restart appcrane
 
 # 3. Initialize admin (must run on the server)
 crane init --name admin --email admin@example.com
