@@ -214,8 +214,8 @@ router.post('/:enhancementId/build', (req, res) => {
 
   if (user.role === 'admin') {
     db.prepare("UPDATE enhancement_requests SET status = 'plan_approved' WHERE id = ?").run(id);
-    db.prepare('INSERT INTO enhancement_jobs (enhancement_id, phase) VALUES (?, ?)').run(id, 'code');
-    res.json({ message: 'Build queued', auto: true });
+    const { lastInsertRowid } = db.prepare('INSERT INTO enhancement_jobs (enhancement_id, phase) VALUES (?, ?)').run(id, 'code');
+    res.json({ message: 'Build queued', auto: true, job_id: Number(lastInsertRowid) });
   } else {
     db.prepare("UPDATE enhancement_requests SET status = 'selected' WHERE id = ?").run(id);
     res.json({ message: 'Plan submitted for admin approval', auto: false });

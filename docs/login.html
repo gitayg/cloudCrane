@@ -277,7 +277,7 @@ input:focus{border-color:var(--accent)}
       <span id="frameUserInfo" class="frame-user"></span>
       <button id="peekBtn" class="btn-enhance" onclick="togglePeekMode()" title="Point & click an element to add context (Esc to cancel)">🎯 Point</button>
       <button class="btn-enhance" onclick="openAskPanel()">🤖 Ask</button>
-      <button class="btn-enhance" onclick="openPlanPanel()">💡 Plan</button>
+      <button class="btn-enhance" onclick="openPlanPanel()">💡 Enhance</button>
       <button id="jobsBtn" class="btn-enhance" onclick="toggleJobsPanel()" style="display:none">📋 Jobs<span id="jobsBadge" class="jobs-badge"></span></button>
       <button class="btn-enhance" onclick="refreshApp()" title="Reload app">🔄</button>
       <a id="frameNewTab" href="#" target="_blank" class="btn-newtab">Open in new tab ↗</a>
@@ -319,7 +319,7 @@ input:focus{border-color:var(--accent)}
   <!-- Plan panel -->
   <div id="planPanel" class="plan-panel">
     <div class="plan-header">
-      <span>🗺️ Plan</span>
+      <span>💡 Enhance</span>
       <span id="planPanelAppLabel" class="ask-app-label"></span>
       <div class="ask-header-right">
         <button class="ask-sessions-btn" onclick="resetPlanPanel()" title="Start a new plan">New</button>
@@ -341,7 +341,7 @@ input:focus{border-color:var(--accent)}
       <div class="ask-input-row">
         <textarea id="planInput" class="ask-textarea" placeholder="Describe the enhancement or feature you want..." rows="2"
           onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendPlanRequest();}"></textarea>
-        <button id="planSendBtn" class="ask-send" onclick="sendPlanRequest()">Plan</button>
+        <button id="planSendBtn" class="ask-send" onclick="sendPlanRequest()">Enhance</button>
       </div>
       <div id="planBuildRow" class="ask-input-row" style="display:none;justify-content:flex-end;padding:4px 0 0">
         <button id="planBuildBtn" class="ask-send plan-build-btn" onclick="buildFromPlan()">Build</button>
@@ -1050,7 +1050,7 @@ function openApp(url, name, slug, hasIcon) {
   document.getElementById('planWorking').style.display = 'none';
   document.getElementById('planPeekBar').style.display = 'none';
   document.getElementById('planBuildRow').style.display = 'none';
-  document.getElementById('planSendBtn').textContent = 'Plan';
+  document.getElementById('planSendBtn').textContent = 'Enhance';
   document.getElementById('planInput').placeholder = 'Describe the enhancement or feature you want...';
   document.getElementById('frameAppName').textContent = name;
   document.getElementById('frameNewTab').href = url;
@@ -1707,7 +1707,7 @@ function resetPlanPanel() {
   document.getElementById('planWorking').style.display = 'none';
   document.getElementById('planPeekBar').style.display = 'none';
   document.getElementById('planBuildRow').style.display = 'none';
-  document.getElementById('planSendBtn').textContent = 'Plan';
+  document.getElementById('planSendBtn').textContent = 'Enhance';
   document.getElementById('planSendBtn').disabled = false;
   document.getElementById('planInput').value = '';
   document.getElementById('planInput').placeholder = 'Describe the enhancement or feature you want...';
@@ -1995,10 +1995,14 @@ async function buildFromPlan() {
     var d = await r.json();
     if (!r.ok) throw new Error((d.error && d.error.message) || 'Build failed');
     document.getElementById('planBuildRow').style.display = 'none';
-    _appendPlanMsg('assistant', d.auto
-      ? '\u2705 Build queued! Check the Jobs panel for progress.'
-      : '\u2705 Plan submitted for admin approval.');
-    refreshJobsBadge();
+    if (d.auto && d.job_id) {
+      _appendPlanMsg('assistant', '\u2705 Build queued!');
+      refreshJobsBadge();
+      openJobDetail(d.job_id);
+    } else {
+      _appendPlanMsg('assistant', '\u2705 Plan submitted for admin approval.');
+      refreshJobsBadge();
+    }
   } catch (err) {
     document.getElementById('planBuildBtn').disabled = false;
     _appendPlanMsg('assistant', '⚠️ ' + err.message);
@@ -2030,7 +2034,7 @@ async function openPlanById(enhId, appSlug) {
     document.getElementById('planMessages').innerHTML = '';
     document.getElementById('planWorking').style.display = 'none';
     document.getElementById('planBuildRow').style.display = 'none';
-    document.getElementById('planSendBtn').textContent = 'Plan';
+    document.getElementById('planSendBtn').textContent = 'Enhance';
     document.getElementById('planSendBtn').disabled = false;
     document.getElementById('planInput').placeholder = 'Describe the enhancement or feature you want...';
 
