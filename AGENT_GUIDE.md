@@ -39,6 +39,13 @@ Every app MUST have a `deployhub.json` in its root directory:
 }
 ```
 
+> **Note on `data_dirs`:** this field is currently **documentary only** —
+> AppCrane does not read it at deploy time. The bind mount is always
+> `/data` → `data/apps/<slug>/<env>/shared/data/` regardless of what you
+> list here. Leave it in for forward-compatibility and as a signal to
+> reviewers of which dirs the app treats as persistent, but don't rely
+> on it to create hostdirs, copy seeds, or change the mount path.
+
 ### Required: Version management
 
 The version is the single source of truth for what's deployed. It must be consistent across three places:
@@ -355,7 +362,19 @@ AppCrane runs every app in an isolated Docker container. The image layers are
 immutable, so **anything your app writes to a path inside the image will
 disappear on the next restart**. There is exactly one writable, persistent
 location per env: the `/data` volume, which AppCrane bind-mounts from
-`data/apps/<slug>/<env>/shared/` on the host.
+`data/apps/<slug>/<env>/shared/data/` on the host onto `/data` in the container.
+
+> ⚠️ **Silent-drift warning.** Apps that resolve their data dir with
+> `./data`, `path.join(__dirname, '../data')`, `'../data'`, or any
+> relative path will silently read/write the **baked-in image path**, not
+> the persistent volume. Writes disappear on every rebuild and reads
+> serve whatever seed shipped in the image. App code must reference
+> `/data` directly, or read it from `DATA_DIR=/data`.
+>
+> **Symptom:** the UI shows stale/seed data while the operator sees
+> *live* data under `/root/appCrane/data/apps/<slug>/<env>/shared/data/`
+> on the host. If these two views disagree, the app is reading the wrong
+> path.
 
 **Rules for any app that writes state** (SQLite DBs, uploads, caches, session
 files, logs you want to keep):
@@ -368,6 +387,13 @@ files, logs you want to keep):
   env var so local dev (where `DATA_DIR` might be `./data`) and prod work the
   same way: `const dataDir = process.env.DATA_DIR || './data';`
 - Create subdirectories on startup (`fs.mkdirSync(dataDir, { recursive: true })`).
+- **Log the resolved data dir on boot** and include it in `/api/health`:
+  ```js
+  console.log('[boot] DATA_DIR =', dataDir);
+  app.get('/api/health', (req, res) => res.json({ status: 'ok', data_dir: dataDir, version: manifest.version }));
+  ```
+  This turns "writes not persisting" from a multi-hour debug into a 10-second
+  diagnosis — one `curl` at the health endpoint reveals the wrong path.
 - `/data` survives redeploys, rollbacks, and container recreation. It is
   included in backups. Production and sandbox get separate `/data` volumes.
 
@@ -378,6 +404,8 @@ const dbPath = path.join(process.env.DATA_DIR || './data', 'app.db');
 // ❌ Breaks in Docker — path is inside the image, not writable, not persistent
 const dbPath = './db/app.db';
 const dbPath = path.join(__dirname, 'db', 'app.db');
+const dbPath = path.join(__dirname, '..', 'data', 'app.db');
+const dbPath = '../data/app.db';
 ```
 
 ### Database
@@ -453,6 +481,16 @@ By default AppCrane generates a `Dockerfile` for every app (Node Alpine, non-roo
 - Must not run as root — end with `USER <non-root-user>`
 - Must not hardcode secrets in `ENV` instructions — use AppCrane env vars instead
 - Do not declare `VOLUME /data` — AppCrane mounts it at runtime
+
+> **UID caveat.** AppCrane chowns the host-side `shared/data/` dir to
+> `1000:1000` on deploy because that's the UID the stock `node:*-alpine`
+> base image uses for the `node` user. If your custom Dockerfile runs as
+> a different non-root user (e.g. debian/ubuntu bases typically don't
+> pre-create a UID-1000 user; Python images use `app` / UID varies),
+> either: (a) create a user with UID 1000 in your Dockerfile
+> (`RUN adduser -u 1000 ...`), or (b) ensure your non-root user can read
+> `/data` some other way — but do **not** blindly `chown 1000:1000`
+> inside your own Dockerfile if you're not running as that UID.
 
 **What AppCrane always controls at runtime (regardless of your Dockerfile):**
 - `APP_BASE_PATH`, `CRANE_URL`, `CRANE_INTERNAL_URL`, `DATA_DIR` are injected via `docker run --env` and override any Dockerfile values
@@ -769,7 +807,29 @@ You have an API key. Here's the full flow to build and deploy an app:
 | Env var missing | Not set for this environment | `PUT /api/apps/SLUG/env/ENV` with the missing var |
 | Database lost after deploy | DB file stored inside the image layer instead of `/data` | Move SQLite to `/data/app.db`; in code, use `process.env.DATA_DIR \|\| './data'` as the base path |
 | `SQLITE_CANTOPEN` / `unable to open database file` at runtime | Relative path resolves inside the read-only image | Switch to absolute `/data/...` path or `process.env.DATA_DIR` — never a relative or `__dirname`-based path |
+| UI shows stale/seed data, operator sees different data on host | App resolved data dir to a relative path — reads from image, not from mounted volume | Run the 3-line diagnostic below; switch to `/data` or `process.env.DATA_DIR` |
 | Can't deploy (403) | Wrong API key or not assigned | Check with admin, use app user key not admin key |
+
+#### Runbook: writes are not persisting
+
+If users report data loss after deploys, or the UI disagrees with what the
+operator sees on the host, run these three commands in order:
+
+```bash
+# 1. What the container sees at /data
+docker exec appcrane-<slug>-<env> ls -la /data/
+
+# 2. What's actually on the host (the persistent volume)
+ssh root@<appcrane-host> ls -la /root/appCrane/data/apps/<slug>/<env>/shared/data/
+
+# 3. Is there a *second* data file baked into the image?
+docker exec appcrane-<slug>-<env> sh -c 'cat /data/db.json | head; echo; find / -name db.json 2>/dev/null'
+```
+
+If (1) and (2) show different files, or (3) reveals a `db.json` (or `app.db`,
+etc.) inside the image at a path like `/app/data/`, the app is reading the
+image copy instead of the mounted volume. Fix by switching the data path in
+code to `process.env.DATA_DIR` (always `/data` in the container).
 
 ## Identity Manager
 
