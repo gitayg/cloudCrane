@@ -438,6 +438,30 @@ async function showDetail(id) {
       panel.appendChild(fileList);
     }
 
+    if (e.ai_plan.test_files && e.ai_plan.test_files.length) {
+      var testHeading = document.createElement('div');
+      testHeading.style.cssText = 'font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--green);margin:12px 0 4px';
+      testHeading.textContent = 'Tests (' + e.ai_plan.test_files.length + ')';
+      panel.appendChild(testHeading);
+      var testList = document.createElement('ul');
+      testList.className = 'plan-files';
+      testList.style.borderColor = '#22c55e33';
+      for (var ti = 0; ti < e.ai_plan.test_files.length; ti++) {
+        var tf = e.ai_plan.test_files[ti];
+        var tli = document.createElement('li');
+        var tcode = document.createElement('code');
+        tcode.style.color = 'var(--green)';
+        tcode.textContent = tf.path;
+        tli.appendChild(tcode);
+        var tact = document.createElement('span');
+        tact.style.cssText = 'margin-left:8px;color:var(--dim)';
+        tact.textContent = '(' + tf.action + ') ' + (tf.what || '');
+        tli.appendChild(tact);
+        testList.appendChild(tli);
+      }
+      panel.appendChild(testList);
+    }
+
     if (e.ai_plan.risks && e.ai_plan.risks.length) {
       var risksDiv = document.createElement('div');
       risksDiv.style.cssText = 'margin:8px 0;padding:8px 12px;background:#ef444412;border:1px solid #ef444433;border-radius:6px;font-size:.82rem';

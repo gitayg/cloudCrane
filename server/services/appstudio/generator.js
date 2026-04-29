@@ -61,6 +61,12 @@ async function ensureStudioImage(onLog) {
 }
 
 function buildPrompt({ plan, summary, agentContext, enhancementMessage }) {
+  const testSection = plan?.test_files?.length
+    ? `# Test files to write\nThe plan requires these test files (create or update each one):\n${
+        plan.test_files.map(f => `- ${f.path} (${f.action}): ${f.what}`).join('\n')
+      }\nFollow the testing framework and style already used in the repo.`
+    : '# Tests\nNo specific test files were planned. If you can identify an appropriate test file to add coverage for your changes, create it.';
+
   return `You are implementing an approved change to an existing application.
 The codebase is already cloned into the current working directory.
 
@@ -75,15 +81,18 @@ ${JSON.stringify(plan, null, 2)}
 # Plan summary
 ${summary}
 
+${testSection}
+
 # Per-app context from the operator
 ${agentContext || '(none)'}
 
 # Rules
-- Stay within the files listed in files_to_change. You may read other files for context.
+- Implement all files listed in files_to_change AND all files listed in test_files.
 - Do NOT modify database schemas or deploy configs unless the plan explicitly lists them.
 - Do NOT add unrelated refactoring or "improvements".
+- Do NOT run tests, npm install, or any server — just write the files.
 - Stage all changes when done — the runner will commit and push.
-- Do NOT push. Do NOT run npm install, tests, or servers.`;
+- Do NOT push.`;
 }
 
 // Node.js runner script executed inside the container.

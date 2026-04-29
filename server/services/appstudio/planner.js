@@ -21,8 +21,9 @@ You will be given:
 1. The enhancement request (what the user wants)
 2. The current repo tree
 3. Relevant source files from the repo
-4. Per-app context notes from the operator (if any)
-5. Prior conversation (if this is a revision based on feedback)
+4. Existing test files in the repo (so you can follow established patterns)
+5. Per-app context notes from the operator (if any)
+6. Prior conversation (if this is a revision based on feedback)
 
 Your job: produce a precise implementation plan that a code-generation agent will execute.
 
@@ -34,6 +35,9 @@ The JSON plan MUST have this shape:
   "files_to_change": [
     { "path": "relative/path.js", "action": "modify|create|delete", "rationale": "...", "estimated_loc": 20 }
   ],
+  "test_files": [
+    { "path": "relative/path.test.js", "action": "modify|create", "what": "brief description of what tests to add or update" }
+  ],
   "files_to_read": ["paths the code agent should read for full context"],
   "risks": ["anything that could go wrong or needs extra testing"],
   "test_plan": "how to verify the change works after deploy",
@@ -42,6 +46,8 @@ The JSON plan MUST have this shape:
 
 Guidelines:
 - Be surgical. Change the minimum set of files needed.
+- ALWAYS populate test_files. Every code change must include or update tests. If the repo has no existing test infrastructure, create the first test file following the language's standard convention (e.g. *.test.js for Node, *_test.go for Go).
+- Follow the existing test framework and style — look at the provided test file samples.
 - Never touch database schemas, deploy configs, or .env unless the request explicitly requires it.
 - If the request is ambiguous, add entries to a top-level "open_questions" array.
 - Respect any constraints in the operator's per-app context notes.
@@ -54,6 +60,20 @@ function getRepoTree(repoDir) {
     }).trim();
   } catch (_) {
     return '(could not read repo tree)';
+  }
+}
+
+function getTestFiles(repoDir, maxFiles = 6) {
+  try {
+    const all = execFileSync('git', ['ls-files'], {
+      cwd: repoDir, encoding: 'utf8', timeout: 10000, stdio: 'pipe',
+    }).trim().split('\n').filter(Boolean);
+    return all.filter(f =>
+      /\.(test|spec)\.(js|ts|jsx|tsx|mjs|cjs)$/.test(f) ||
+      /\/(tests?|__tests__|spec)\//.test(f)
+    ).slice(0, maxFiles);
+  } catch (_) {
+    return [];
   }
 }
 
@@ -119,11 +139,19 @@ export async function planEnhancement({ request, repoDir, agentContext, priorCom
     .map(p => `### ${p}\n\`\`\`\n${readFileSafe(p)}\n\`\`\``)
     .join('\n\n');
 
+  const testPaths = getTestFiles(repoDir);
+  const testContents = testPaths
+    .map(p => `### ${p}\n\`\`\`\n${readFileSafe(join(repoDir, p), 6000)}\n\`\`\``)
+    .join('\n\n');
+
   const userContent = [
     `## Enhancement request\n\n${request}`,
     priorComments ? `## Prior reviewer feedback\n\n${priorComments}` : '',
     `## Repo tree\n\`\`\`\n${repoTree}\n\`\`\``,
     fileContents ? `## Relevant source files\n\n${fileContents}` : '',
+    testContents
+      ? `## Existing test files (follow these patterns)\n\n${testContents}`
+      : '## Existing test files\n\n(none found — create the first test file)',
     agentContext ? `## Per-app context (from operator)\n\n${agentContext}` : '',
   ].filter(Boolean).join('\n\n---\n\n');
 
