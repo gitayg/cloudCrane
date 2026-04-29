@@ -230,6 +230,7 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
     appendLog('Building docker image...');
     const image = await buildImageIfNeeded({
       slug: app.slug,
+      env,
       contextDir: releaseDir,
       commitHash,
       onLog: (line) => { if (deployLog.length < 500) appendLog(`  ${line}`); },
@@ -282,7 +283,7 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
       appendLog('Health check passed');
     }
 
-    pruneOldImages(app.slug, 2);
+    pruneOldImages(app.slug, env, 2);
 
     // 7. Update current symlink (remove old even if target is gone)
     const currentLink = resolve(join(appDir, 'current'));

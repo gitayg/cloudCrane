@@ -24,14 +24,17 @@ function containerName(slug, env) {
   return `appcrane-${slug}-${env}`;
 }
 
-function imageTag(slug, commitHash) {
+function imageTag(slug, env, commitHash) {
   const raw = commitHash && commitHash !== 'unknown' ? commitHash : `t${Date.now()}`;
-  const tag = raw.replace(/[^a-zA-Z0-9._-]/g, '-');
-  return `appcrane-${slug}:${tag}`;
+  const safe = raw.replace(/[^a-zA-Z0-9._-]/g, '-');
+  // Must be env-scoped: Vite/other bundlers bake APP_BASE_PATH into the artifact
+  // at build time, so sandbox (/<slug>-sandbox/) and production (/<slug>/) MUST
+  // have different images even when built from the same commit.
+  return `appcrane-${slug}-${env}:${safe}`;
 }
 
-export async function buildImageIfNeeded({ slug, contextDir, commitHash, onLog }) {
-  const tag = imageTag(slug, commitHash);
+export async function buildImageIfNeeded({ slug, env, contextDir, commitHash, onLog }) {
+  const tag = imageTag(slug, env, commitHash);
   if (commitHash && commitHash !== 'unknown') {
     try {
       await dockerExec(['image', 'inspect', tag, '--format', '{{.Id}}'], { timeout: 5000 });
@@ -39,7 +42,7 @@ export async function buildImageIfNeeded({ slug, contextDir, commitHash, onLog }
       return tag;
     } catch (_) {}
   }
-  return buildImage({ slug, contextDir, commitHash, onLog });
+  return buildImage({ slug, env, contextDir, commitHash, onLog });
 }
 
 export async function getContainerImage(slug, env) {
@@ -47,9 +50,9 @@ export async function getContainerImage(slug, env) {
   return dockerExec(['inspect', name, '--format', '{{.Config.Image}}'], { timeout: 5000 });
 }
 
-export async function buildImage({ slug, contextDir, commitHash, onLog }) {
-  const tag = imageTag(slug, commitHash);
-  const args = ['build', '-t', tag, '--label', APPCRANE_LABEL, '--label', `slug=${slug}`, contextDir];
+export async function buildImage({ slug, env, contextDir, commitHash, onLog }) {
+  const tag = imageTag(slug, env, commitHash);
+  const args = ['build', '-t', tag, '--label', APPCRANE_LABEL, '--label', `slug=${slug}`, '--label', `env=${env}`, contextDir];
 
   return new Promise((resolve, reject) => {
     const child = spawn('docker', args, { stdio: 'pipe' });
@@ -188,9 +191,11 @@ export async function listAll() {
   }
 }
 
-export async function pruneOldImages(slug, keep = 2) {
+export async function pruneOldImages(slug, env, keep = 2) {
   try {
-    const out = await dockerExec(['images', '--filter', `label=slug=${slug}`, '--format', '{{.ID}} {{.CreatedAt}}']);
+    const filters = ['--filter', `label=slug=${slug}`];
+    if (env) filters.push('--filter', `label=env=${env}`);
+    const out = await dockerExec(['images', ...filters, '--format', '{{.ID}} {{.CreatedAt}}']);
     if (!out) return;
     const rows = out.split('\n').map(l => {
       const sp = l.indexOf(' ');
