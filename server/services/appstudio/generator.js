@@ -101,14 +101,23 @@ run('git', ['checkout', '-b', branch]);
 // Run Claude Code
 console.log('[studio] Running Claude Code on ' + model + '…');
 const prompt = fs.readFileSync('/studio/prompt.txt', 'utf8');
+const claudeEnv = {
+  ...process.env,
+  HOME: '/root',
+  PATH: '/usr/local/bin:/usr/bin:/bin',
+};
 const result = spawnSync('claude', [
   '-p', prompt,
   '--model', model,
   '--dangerously-skip-permissions',
   '--output-format', 'stream-json',
   '--verbose',
-], { stdio: 'inherit', cwd: '/workspace', timeout: ${GEN_TIMEOUT_MS} });
+], { stdio: 'inherit', cwd: '/workspace', timeout: ${GEN_TIMEOUT_MS}, env: claudeEnv });
 
+if (result.error) {
+  console.error('[studio] Failed to spawn Claude Code: ' + result.error.message);
+  process.exit(1);
+}
 if (result.status !== 0) {
   console.error('[studio] Claude Code exited with code ' + result.status);
   process.exit(result.status || 1);

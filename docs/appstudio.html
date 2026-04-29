@@ -479,12 +479,22 @@ async function showDetail(id) {
       tag.textContent = 'JOB-' + String(j.id).padStart(4, '0');
       tag.title = 'Click to copy tracking ID';
       tag.addEventListener('click', function(jid) { return function() { navigator.clipboard.writeText('JOB-' + String(jid).padStart(4, '0')); }; }(j.id));
-      var left = document.createElement('span'); left.style.margin = '0 8px';
+      var left = document.createElement('span'); left.style.margin = '0 8px; flex:1';
       left.textContent = j.phase + ' (' + j.status + ')';
       var right = document.createElement('span'); right.style.color = 'var(--dim)';
       right.textContent = (j.started_at || j.created_at || '').slice(0, 19);
-      if (j.error_message) { right.textContent += ' — ' + j.error_message.slice(0, 80); right.style.color = 'var(--red)'; }
+      if (j.error_message) { right.style.color = 'var(--red)'; right.textContent = j.error_message.slice(0, 80); }
       row.appendChild(tag); row.appendChild(left); row.appendChild(right);
+      if (j.status === 'failed') {
+        var retryBtn = document.createElement('button');
+        retryBtn.textContent = 'Retry'; retryBtn.style.cssText = 'margin-left:10px;font-size:.72rem;padding:2px 8px';
+        retryBtn.addEventListener('click', function(jid, eid) { return async function() {
+          var r = await apiPost('/api/appstudio/jobs/' + jid + '/retry', {});
+          if (r.error) { alert(r.error); return; }
+          showDetail(eid);
+        }; }(j.id, e.id));
+        row.appendChild(retryBtn);
+      }
       panel.appendChild(row);
     }
   }

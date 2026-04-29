@@ -107,6 +107,24 @@ router.post('/:id/reject', requireAdmin, auditMiddleware('appstudio.reject'), (r
 });
 
 /**
+ * POST /api/appstudio/jobs/:jobId/retry - Re-queue a failed job
+ */
+router.post('/jobs/:jobId/retry', requireAdmin, auditMiddleware('appstudio.retry'), (req, res) => {
+  const db = getDb();
+  const job = db.prepare('SELECT * FROM enhancement_jobs WHERE id = ?').get(req.params.jobId);
+  if (!job) throw new AppError('Job not found', 404, 'NOT_FOUND');
+  if (job.status !== 'failed') throw new AppError('Only failed jobs can be retried', 400, 'NOT_FAILED');
+
+  db.transaction(() => {
+    db.prepare('INSERT INTO enhancement_jobs (enhancement_id, phase) VALUES (?, ?)').run(job.enhancement_id, job.phase);
+    db.prepare("UPDATE enhancement_requests SET status = 'plan_approved', ai_log = COALESCE(ai_log, '') || ? WHERE id = ? AND status = 'auto_failed'")
+      .run(`\n[${new Date().toISOString()}] Job #${job.id} (${job.phase}) retried\n`, job.enhancement_id);
+  })();
+
+  res.json({ message: 'Job re-queued' });
+});
+
+/**
  * GET /api/appstudio/:id - Full enhancement detail with plan + jobs
  */
 router.get('/:id', (req, res) => {
