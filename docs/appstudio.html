@@ -183,7 +183,7 @@ function renderRequests(el) {
   var wrap = document.createElement('div');
   var table = document.createElement('table'); table.className = 'req-table';
   var thead = table.createTHead(); var hrow = thead.insertRow();
-  ['Application', 'User', 'Date', 'Message', 'Status', 'Action', ''].forEach(function(h) {
+  ['Application', 'User', 'Date', 'Message', 'Status', 'Fix Version', 'Action', ''].forEach(function(h) {
     var th = document.createElement('th'); th.textContent = h; hrow.appendChild(th);
   });
   var tbody = table.createTBody();
@@ -201,7 +201,7 @@ function renderRequests(el) {
     tbody.textContent = '';
     if (!rows.length) {
       var empty = document.createElement('tr'); var etd = document.createElement('td');
-      etd.colSpan = 7; etd.style.cssText = 'text-align:center;padding:32px;color:var(--dim)';
+      etd.colSpan = 8; etd.style.cssText = 'text-align:center;padding:32px;color:var(--dim)';
       etd.textContent = 'No enhancement requests' + (appF || statusF || q ? ' matching filters' : '');
       empty.appendChild(etd); tbody.appendChild(empty); return;
     }
@@ -230,6 +230,10 @@ function renderRequests(el) {
       // Status badge
       var tdStatus = tr.insertCell();
       var badge = document.createElement('span'); badge.className = 'enh-status s-' + status; badge.textContent = statusLabel(status); tdStatus.appendChild(badge);
+
+      // Fix Version
+      var tdFix = tr.insertCell(); tdFix.style.cssText = 'font-family:monospace;font-size:.75rem;white-space:nowrap';
+      tdFix.textContent = r.fix_version || '—';
 
       // Action
       var tdAct = tr.insertCell();

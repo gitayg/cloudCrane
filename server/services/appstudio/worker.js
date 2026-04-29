@@ -201,10 +201,11 @@ async function handleCode(job) {
 
   db.prepare(`
     UPDATE enhancement_requests
-    SET status = 'sandbox_ready', branch_name = ?,
+    SET status = 'sandbox_ready', branch_name = ?, fix_version = ?,
         ai_log = COALESCE(ai_log, '') || ?
     WHERE id = ?
   `).run(
+    branchName,
     branchName,
     `\n[${new Date().toISOString()}] Code generated, branch ${branchName} pushed\n`,
     enh.id,
