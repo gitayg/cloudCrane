@@ -87,6 +87,28 @@ router.get('/', (req, res) => {
 });
 
 /**
+ * POST /api/apps/analyze - AI analysis of a GitHub repo (admin only)
+ * Body: { github_url, branch?, github_token? }
+ * Returns: { name, slug, description, framework, port, env_vars, notes }
+ */
+router.post('/analyze', requireAdmin, async (req, res) => {
+  const { github_url, branch, github_token } = req.body || {};
+  if (!github_url) throw new AppError('github_url is required', 400, 'VALIDATION');
+  if (!/^https:\/\/.+/.test(github_url)) throw new AppError('github_url must use HTTPS', 400, 'VALIDATION');
+
+  const { analyzeGithubRepo } = await import('../services/appAnalyzer.js');
+  const { encrypt } = await import('../services/encryption.js');
+  const githubTokenEncrypted = github_token ? encrypt(github_token) : null;
+
+  const analysis = await analyzeGithubRepo({
+    githubUrl: github_url,
+    branch: branch || 'main',
+    githubTokenEncrypted,
+  });
+  res.json({ analysis });
+});
+
+/**
  * POST /api/apps - Create app (any authenticated user, auto-assigns creator)
  */
 router.post('/', requireAuth, auditMiddleware('app-create'), async (req, res) => {

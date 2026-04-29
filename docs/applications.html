@@ -24,6 +24,25 @@ tr:hover td{background:var(--surface2)}
 .btn-red{font-size:.65rem;padding:1px 6px;color:var(--red);background:none;border-color:var(--red);opacity:.8}
 .btn-red:hover{opacity:1}
 .evars-inner{padding:10px 14px;font-size:.82rem}
+/* Analyze wizard */
+.az-overlay{display:none;position:fixed;inset:0;background:#0008;z-index:200;align-items:center;justify-content:center}
+.az-overlay.open{display:flex}
+.az-modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;width:min(680px,96vw);max-height:90vh;overflow-y:auto;padding:28px 28px 24px;display:flex;flex-direction:column;gap:18px}
+.az-title{font-size:1.05rem;font-weight:700;margin:0}
+.az-field{display:flex;flex-direction:column;gap:6px}
+.az-label{font-size:.8rem;color:var(--dim);font-weight:600}
+.az-input{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 11px;border-radius:7px;font-size:.88rem;font-family:inherit;width:100%;box-sizing:border-box}
+.az-input:focus{outline:none;border-color:var(--accent)}
+.az-section{font-size:.78rem;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-top:4px}
+.az-env-row{display:grid;grid-template-columns:160px 1fr auto;gap:8px;align-items:start;margin-bottom:8px;font-size:.82rem}
+.az-env-key{font-family:monospace;font-size:.8rem;padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-weight:600}
+.az-badge{font-size:.65rem;padding:2px 6px;border-radius:4px;font-weight:600;white-space:nowrap;align-self:center}
+.az-req{background:#ef444422;color:#ef4444}
+.az-opt{background:#6b728022;color:var(--dim)}
+.az-notes{background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:10px 12px;font-size:.82rem;color:var(--dim);line-height:1.5}
+.az-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:4px}
+.az-spinner{display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:az-spin .7s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes az-spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -42,6 +61,7 @@ document.body.insertAdjacentHTML('beforeend',
   '<div class="page-content"><div class="container">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
       '<h2 style="margin:0">Applications</h2>' +
+      '<button class="btn btn-primary" onclick="openAnalyzeWizard()" style="font-size:12px;padding:4px 14px">+ Add from GitHub</button>' +
       '<button class="btn" onclick="generateAgentKey()" style="font-size:12px;padding:4px 14px">+ New App Agent</button>' +
     '</div>' +
     '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden">' +
@@ -433,6 +453,203 @@ async function setCategory(slug, current) {
 }
 
 loadApps();
+</script>
+
+<!-- Analyze-from-GitHub wizard -->
+<div id="azOverlay" class="az-overlay" onclick="if(event.target===this)closeAnalyzeWizard()">
+<div class="az-modal" id="azModal">
+  <div style="display:flex;align-items:center;justify-content:space-between">
+    <h3 class="az-title" id="azTitle">Add App from GitHub</h3>
+    <button onclick="closeAnalyzeWizard()" class="btn" style="padding:3px 10px">✕</button>
+  </div>
+  <div id="azStep1">
+    <div class="az-field">
+      <label class="az-label">GitHub Repository URL</label>
+      <input id="azUrl" class="az-input" placeholder="https://github.com/org/repo" />
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="az-field">
+        <label class="az-label">Branch</label>
+        <input id="azBranch" class="az-input" placeholder="main" />
+      </div>
+    </div>
+    <div class="az-field">
+      <label class="az-label">Personal Access Token <span style="color:var(--dim);font-weight:400">(optional, for private repos)</span></label>
+      <input id="azToken" class="az-input" type="password" placeholder="ghp_..." />
+    </div>
+    <div class="az-actions">
+      <button class="btn" onclick="closeAnalyzeWizard()">Cancel</button>
+      <button class="btn btn-primary" onclick="runAnalyze()">Analyze with AI →</button>
+    </div>
+  </div>
+  <div id="azStep2" style="display:none;text-align:center;padding:32px 0;color:var(--dim)">
+    <span class="az-spinner"></span>Cloning and analyzing repository…
+  </div>
+  <div id="azStep3" style="display:none">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <span id="azFramework" style="font-size:.78rem;background:var(--surface2);border:1px solid var(--border);padding:2px 8px;border-radius:5px;color:var(--dim)"></span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="az-field">
+        <label class="az-label">App Name</label>
+        <input id="azName" class="az-input" />
+      </div>
+      <div class="az-field">
+        <label class="az-label">Slug</label>
+        <input id="azSlug" class="az-input" />
+      </div>
+    </div>
+    <div class="az-field">
+      <label class="az-label">Description</label>
+      <input id="azDesc" class="az-input" />
+    </div>
+    <div id="azEnvSection" style="display:none">
+      <div class="az-section" style="margin:14px 0 4px">Environment Variables</div>
+      <p style="font-size:.78rem;color:var(--dim);margin:0 0 12px">Fill values now or leave blank to set later.</p>
+      <div id="azEnvRows"></div>
+    </div>
+    <div id="azNotesSection" style="display:none">
+      <div class="az-section" style="margin:14px 0 8px">Setup Notes</div>
+      <div id="azNotes" class="az-notes"></div>
+    </div>
+    <div class="az-actions" style="margin-top:16px">
+      <button class="btn" onclick="closeAnalyzeWizard()">Cancel</button>
+      <button class="btn btn-primary" id="azCreateBtn" onclick="createFromAnalysis()">Create App</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+var _analysis = null;
+
+function openAnalyzeWizard() {
+  _analysis = null;
+  ['azStep2','azStep3'].forEach(function(id){ document.getElementById(id).style.display='none'; });
+  document.getElementById('azStep1').style.display = '';
+  document.getElementById('azTitle').textContent = 'Add App from GitHub';
+  document.getElementById('azUrl').value = '';
+  document.getElementById('azBranch').value = '';
+  document.getElementById('azToken').value = '';
+  document.getElementById('azOverlay').classList.add('open');
+}
+
+function closeAnalyzeWizard() {
+  document.getElementById('azOverlay').classList.remove('open');
+}
+
+async function runAnalyze() {
+  const url = document.getElementById('azUrl').value.trim();
+  const branch = document.getElementById('azBranch').value.trim() || 'main';
+  const token = document.getElementById('azToken').value.trim();
+  if (!url) { alert('Please enter a GitHub URL'); return; }
+  document.getElementById('azStep1').style.display = 'none';
+  document.getElementById('azStep2').style.display = '';
+  document.getElementById('azTitle').textContent = 'Analyzing repository…';
+  try {
+    const body = { github_url: url, branch };
+    if (token) body.github_token = token;
+    const data = await apiPost('/api/apps/analyze', body);
+    if (data.error) throw new Error(data.error.message);
+    _analysis = data.analysis;
+    renderAnalysis(_analysis);
+  } catch (e) {
+    document.getElementById('azStep2').style.display = 'none';
+    document.getElementById('azStep1').style.display = '';
+    document.getElementById('azTitle').textContent = 'Add App from GitHub';
+    alert('Analysis failed: ' + e.message);
+  }
+}
+
+function renderAnalysis(a) {
+  document.getElementById('azStep2').style.display = 'none';
+  document.getElementById('azStep3').style.display = '';
+  document.getElementById('azTitle').textContent = 'Review & Create';
+  document.getElementById('azFramework').textContent = [a.framework, a.language].filter(Boolean).join(' · ');
+  document.getElementById('azName').value = a.name || '';
+  document.getElementById('azSlug').value = a.slug || '';
+  document.getElementById('azDesc').value = a.description || '';
+
+  const rows = document.getElementById('azEnvRows');
+  rows.textContent = '';
+  if (a.env_vars && a.env_vars.length) {
+    document.getElementById('azEnvSection').style.display = '';
+    a.env_vars.forEach(function(v) {
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'display:grid;grid-template-columns:180px 1fr;gap:8px;margin-bottom:10px;align-items:start';
+
+      const left = document.createElement('div');
+      const key = document.createElement('div');
+      key.style.cssText = 'font-family:monospace;font-size:.78rem;font-weight:700;color:var(--text);padding:6px 0 3px';
+      key.textContent = v.key;
+      const badge = document.createElement('span');
+      badge.className = 'az-badge ' + (v.required ? 'az-req' : 'az-opt');
+      badge.textContent = v.required ? 'required' : 'optional';
+      left.appendChild(key);
+      left.appendChild(badge);
+
+      const right = document.createElement('div');
+      const inp = document.createElement('input');
+      inp.className = 'az-input';
+      inp.dataset.envKey = v.key;
+      inp.placeholder = v.example || v.description || '';
+      inp.style.fontSize = '.82rem';
+      const desc = document.createElement('div');
+      desc.style.cssText = 'font-size:.72rem;color:var(--dim);margin-top:4px;line-height:1.4';
+      desc.textContent = v.description || '';
+      right.appendChild(inp);
+      right.appendChild(desc);
+
+      wrap.appendChild(left);
+      wrap.appendChild(right);
+      rows.appendChild(wrap);
+    });
+  } else {
+    document.getElementById('azEnvSection').style.display = 'none';
+  }
+
+  if (a.notes && a.notes.trim()) {
+    document.getElementById('azNotesSection').style.display = '';
+    document.getElementById('azNotes').textContent = a.notes;
+  } else {
+    document.getElementById('azNotesSection').style.display = 'none';
+  }
+}
+
+async function createFromAnalysis() {
+  const name = document.getElementById('azName').value.trim();
+  const slug = document.getElementById('azSlug').value.trim();
+  if (!name || !slug) { alert('Name and slug are required'); return; }
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) { alert('Slug must be lowercase letters, numbers, and dashes'); return; }
+  const btn = document.getElementById('azCreateBtn');
+  btn.disabled = true; btn.textContent = 'Creating…';
+  try {
+    const app = await apiPost('/api/apps', {
+      name, slug,
+      description: document.getElementById('azDesc').value.trim() || null,
+      github_url: _analysis.github_url,
+      branch: _analysis.branch || 'main',
+      source_type: 'github',
+    });
+    if (app.error) throw new Error(app.error.message);
+
+    // Set any filled-in env vars on both environments
+    const vars = {};
+    document.querySelectorAll('#azEnvRows input[data-env-key]').forEach(function(inp) {
+      if (inp.value.trim()) vars[inp.dataset.envKey] = inp.value.trim();
+    });
+    if (Object.keys(vars).length) {
+      await apiPut('/api/apps/' + slug + '/env/production', { vars });
+      await apiPut('/api/apps/' + slug + '/env/sandbox', { vars });
+    }
+
+    closeAnalyzeWizard();
+    loadApps();
+  } catch (e) {
+    alert('Failed: ' + e.message);
+    btn.disabled = false; btn.textContent = 'Create App';
+  }
+}
 </script>
 </body>
 </html>
