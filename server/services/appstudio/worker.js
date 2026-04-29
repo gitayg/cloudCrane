@@ -119,11 +119,22 @@ async function handlePlan(job) {
   const agentContext = enh.app_slug ? getAgentContext(enh.app_slug) : '';
   const priorComments = enh.user_comments || enh.admin_comments || null;
 
+  let lastWriteMs = 0;
+  const onChunk = (fullText) => {
+    const now = Date.now();
+    if (now - lastWriteMs > 600) {
+      db.prepare('UPDATE enhancement_jobs SET output_json = ? WHERE id = ?')
+        .run(JSON.stringify({ streaming: true, text: fullText }), job.id);
+      lastWriteMs = now;
+    }
+  };
+
   const result = await planEnhancement({
     request: enh.message,
     repoDir,
     agentContext,
     priorComments,
+    onChunk,
   });
 
   const costCents = Math.ceil(result.costUsd * 100);

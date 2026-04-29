@@ -52,6 +52,11 @@
 .actions-bar{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
 .cost-badge{font-size:.75rem;color:var(--dim);background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px}
 
+/* Planning stream */
+@keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.3}}
+.plan-stream-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block;animation:pulse-dot 1.4s ease-in-out infinite}
+.plan-stream-box{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;font-size:.75rem;color:var(--dim);max-height:420px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;margin:0;font-family:'SF Mono',Monaco,monospace;line-height:1.55}
+
 /* Library / Jobs / Usage */
 .context-editor{width:100%;min-height:200px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;color:var(--text);font-family:monospace;font-size:.82rem;resize:vertical}
 .job-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:.82rem}
@@ -288,6 +293,46 @@ async function showDetail(id) {
   msgBox.style.cssText = 'margin-bottom:16px;line-height:1.5';
   msgBox.textContent = e.message;
   panel.appendChild(msgBox);
+
+  // Live planning stream
+  if (e.status === 'planning' || e.status === 'coding') {
+    var streamSection = document.createElement('div');
+    streamSection.style.marginTop = '16px';
+
+    var streamHeader = document.createElement('div');
+    streamHeader.style.cssText = 'font-size:.82rem;color:var(--accent);margin-bottom:8px;display:flex;align-items:center;gap:8px;font-weight:600';
+    var dot = document.createElement('span'); dot.className = 'plan-stream-dot';
+    streamHeader.appendChild(dot);
+    streamHeader.appendChild(document.createTextNode(e.status === 'planning' ? 'AI is generating a plan…' : 'AI is writing code…'));
+    streamSection.appendChild(streamHeader);
+
+    var pre = document.createElement('pre'); pre.className = 'plan-stream-box'; pre.id = 'planStream';
+    var runningJob = jobs.find(function(j) { return j.status === 'running'; });
+    if (runningJob && runningJob.output_json) {
+      try { pre.textContent = JSON.parse(runningJob.output_json).text || 'Waiting…'; } catch(_) { pre.textContent = 'Waiting…'; }
+    } else { pre.textContent = 'Waiting for response…'; }
+    streamSection.appendChild(pre);
+    panel.appendChild(streamSection);
+
+    var _poll = setInterval(async function() {
+      var fresh = await apiFetch('/api/appstudio/' + id);
+      if (fresh.enhancement.status !== e.status) {
+        clearInterval(_poll);
+        showDetail(id);
+        return;
+      }
+      var rj = (fresh.jobs || []).find(function(j) { return j.status === 'running'; });
+      if (rj && rj.output_json) {
+        try {
+          var parsed = JSON.parse(rj.output_json);
+          var el = document.getElementById('planStream');
+          if (el && parsed.text) { el.textContent = parsed.text; el.scrollTop = el.scrollHeight; }
+        } catch(_) {}
+      }
+    }, 1500);
+
+    back.addEventListener('click', function() { clearInterval(_poll); });
+  }
 
   if (e.ai_plan) {
     var planHeading = document.createElement('h4');

@@ -111,7 +111,7 @@ function extractJsonBlock(text) {
   return null;
 }
 
-export async function planEnhancement({ request, repoDir, agentContext, priorComments }) {
+export async function planEnhancement({ request, repoDir, agentContext, priorComments, onChunk }) {
   const repoTree = getRepoTree(repoDir);
   const keywords = extractKeywords(request + ' ' + (priorComments || ''));
   const relevantPaths = grepRelevantFiles(repoDir, keywords);
@@ -129,23 +129,31 @@ export async function planEnhancement({ request, repoDir, agentContext, priorCom
 
   log.info(`AppStudio plan: ${MODEL}, ${relevantPaths.length} files in context`);
 
-  const response = await client().messages.create({
+  let fullText = '';
+  const stream = client().messages.stream({
     model: MODEL,
     max_tokens: 4096,
     system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: userContent }],
   });
 
-  const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
-  const plan = extractJsonBlock(text);
-  const summary = text.replace(/```json[\s\S]*?```/, '').trim();
+  for await (const event of stream) {
+    if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+      fullText += event.delta.text;
+      onChunk?.(fullText);
+    }
+  }
+
+  const finalMsg = await stream.finalMessage();
+  const plan = extractJsonBlock(fullText);
+  const summary = fullText.replace(/```json[\s\S]*?```/, '').trim();
 
   return {
     plan,
     summary,
-    rawText: text,
-    tokensIn: response.usage?.input_tokens || 0,
-    tokensOut: response.usage?.output_tokens || 0,
-    costUsd: usdCost(response.usage || {}),
+    rawText: fullText,
+    tokensIn: finalMsg.usage?.input_tokens || 0,
+    tokensOut: finalMsg.usage?.output_tokens || 0,
+    costUsd: usdCost(finalMsg.usage || {}),
   };
 }
