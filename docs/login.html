@@ -526,6 +526,10 @@ input:focus{border-color:var(--accent)}
       <div class="section-title" style="margin-top:32px">My Enhancement Requests</div>
       <div id="myEnhList" class="my-enh-list"></div>
     </div>
+    <div id="adminEnhSection" class="hidden">
+      <div class="section-title" style="margin-top:32px">All Enhancement Requests</div>
+      <div id="adminEnhList" class="my-enh-list"></div>
+    </div>
   </div>
 </div>
 
@@ -999,6 +1003,7 @@ function showApps(data) {
   });
 
   loadMyEnhancements();
+  if (data.user.role === 'admin') loadAdminEnhancements();
 
   // Catalog — apps the user can see but can't access yet
   if (catalog.length > 0) {
@@ -1427,6 +1432,86 @@ async function deleteMyEnhancement(id, cardEl) {
   } catch (e) {
     alert('Network error — could not delete request.');
   }
+}
+
+async function loadAdminEnhancements() {
+  try {
+    const res = await fetch(API + '/api/enhancements/portal', {
+      headers: { 'Authorization': 'Bearer ' + sessionToken }
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    const requests = data.requests || [];
+    const section = document.getElementById('adminEnhSection');
+    const listEl = document.getElementById('adminEnhList');
+    listEl.textContent = '';
+    if (!requests.length) { section.classList.add('hidden'); return; }
+    section.classList.remove('hidden');
+    requests.forEach(function(r) {
+      const status = r.status || 'new';
+      const card = document.createElement('div');
+      card.className = 'my-enh-card s-' + status;
+
+      const header = document.createElement('div');
+      header.className = 'my-enh-header';
+
+      if (r.app_slug) {
+        const appBadge = document.createElement('span');
+        appBadge.className = 'my-enh-app';
+        appBadge.textContent = r.app_slug;
+        header.appendChild(appBadge);
+      }
+
+      if (r.user_name) {
+        const userBadge = document.createElement('span');
+        userBadge.className = 'my-enh-app';
+        userBadge.textContent = r.user_name;
+        header.appendChild(userBadge);
+      }
+
+      const statusBadge = document.createElement('span');
+      statusBadge.className = 'my-enh-status s-' + status;
+      statusBadge.textContent = ENH_STATUS_LABELS[status] || status;
+      header.appendChild(statusBadge);
+
+      const date = document.createElement('span');
+      date.className = 'my-enh-date';
+      date.textContent = fmtDate(r.created_at);
+      header.appendChild(date);
+
+      const jobActive = r.latest_job_status === 'queued' || r.latest_job_status === 'running';
+      const delBtn = document.createElement('button');
+      delBtn.className = 'my-enh-del';
+      delBtn.title = jobActive ? 'Cannot delete — a job is running' : 'Delete request';
+      delBtn.textContent = '×';
+      delBtn.disabled = jobActive;
+      if (jobActive) delBtn.style.opacity = '0.3';
+      delBtn.onclick = function(e) {
+        e.stopPropagation();
+        if (!confirm('Delete this enhancement request? This cannot be undone.')) return;
+        fetch(API + '/api/enhancements/' + r.id + '/delete', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + sessionToken }
+        }).then(function(resp) {
+          if (resp.ok) {
+            card.remove();
+            if (!listEl.children.length) section.classList.add('hidden');
+          } else {
+            return resp.json().then(function(d) { alert(d.error || 'Delete failed'); });
+          }
+        }).catch(function(err) { alert('Network error: ' + err.message); });
+      };
+      header.appendChild(delBtn);
+
+      const msg = document.createElement('div');
+      msg.className = 'my-enh-msg';
+      msg.textContent = r.message;
+
+      card.appendChild(header);
+      card.appendChild(msg);
+      listEl.appendChild(card);
+    });
+  } catch (e) {}
 }
 
 // ─── Peek / point-and-click element selector ─────────────────────────────

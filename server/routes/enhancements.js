@@ -147,6 +147,33 @@ router.post('/:id/set-status', requireAuth, requireAdmin, (req, res) => {
 });
 
 /**
+ * GET /api/enhancements/portal
+ * List all enhancement requests for the admin portal view.
+ * Auth: Authorization: Bearer TOKEN (admin only)
+ */
+router.get('/portal', (req, res) => {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  const session = getUserFromBearer(token);
+  if (!session) throw new AppError('Authentication required', 401, 'UNAUTHORIZED');
+  if (session.role !== 'admin') throw new AppError('Admin access required', 403, 'FORBIDDEN');
+
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT
+      er.id, er.app_slug, er.user_name, er.message, er.created_at, er.status,
+      er.fix_version,
+      j.status AS latest_job_status
+    FROM enhancement_requests er
+    LEFT JOIN enhancement_jobs j ON j.id = (
+      SELECT id FROM enhancement_jobs WHERE enhancement_id = er.id ORDER BY id DESC LIMIT 1
+    )
+    ORDER BY er.created_at DESC
+  `).all();
+  res.json({ requests: rows });
+});
+
+/**
  * POST /api/enhancements/:id/delete
  * Delete an enhancement request. Admins can delete any request; regular
  * users can delete requests they submitted themselves. Refuses to delete
