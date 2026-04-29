@@ -4,7 +4,7 @@ import { join, resolve } from 'path';
 import { getDb } from '../db.js';
 import { decrypt } from './encryption.js';
 import log from '../utils/logger.js';
-import { refreshCache } from './appstudio/codebaseCache.js';
+import { ensureCodebaseContext } from './appstudio/contextBuilder.js';
 
 function parseResourceLimits(raw) {
   try {
@@ -199,16 +199,21 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
 
     const { dockerAvailable, buildImage, startApp: dockerStart, stopApp: dockerStop, pruneOldImages } = await import('./docker.js');
     const { ensureDockerfile } = await import('./dockerfileGen.js');
+    const { validateDockerfile } = await import('./dockerfileValidator.js');
 
     if (!dockerAvailable()) throw new Error('Docker daemon is not available on this host');
 
-    // No validateManifestCommand here — Docker builds run inside an isolated
-    // container, which IS the security boundary. Commands like "cd backend &&
-    // node server.js" are safe in a Dockerfile CMD but would fail the
-    // host-oriented validator (which blocks shell metacharacters and non-allowlisted executables).
-
     const { userProvided } = ensureDockerfile({ releaseDir, manifest, appBasePath, craneUrl, craneInternalUrl });
-    appendLog(userProvided ? 'Using app-provided Dockerfile' : 'Generated Dockerfile (Node Alpine, non-root)');
+
+    if (userProvided) {
+      const expectedPort = manifest?.port || manifest?.be?.port || 3000;
+      const { valid, errors, warnings } = validateDockerfile(releaseDir, { expectedPort });
+      for (const w of warnings) appendLog(`⚠ Dockerfile: ${w}`);
+      if (!valid) throw new Error(`Dockerfile validation failed:\n${errors.map(e => '  • ' + e).join('\n')}`);
+      appendLog('Using app-provided Dockerfile (validated)');
+    } else {
+      appendLog('Generated Dockerfile (Node Alpine, non-root)');
+    }
 
     appendLog('Building docker image...');
     const image = buildImage({
@@ -260,7 +265,10 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
       UPDATE deployments SET status = 'live', version = ?, commit_hash = ?, release_path = ?, finished_at = datetime('now'), log = ?
       WHERE id = ?
     `).run(manifest.version || 'unknown', commitHash, releaseDir, deployLog.join('\n'), deployId);
-    if (env === 'production') refreshCache(app.slug, releaseDir);
+    // Refresh AI codebase context in background after production deploy
+    if (env === 'production') {
+      ensureCodebaseContext(app.slug, releaseDir).catch(err => log.warn(`Context refresh failed for ${app.slug}: ${err.message}`));
+    }
 
     // 9. Persist health endpoint from manifest
     if (manifest.be?.health) {

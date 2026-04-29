@@ -3,7 +3,7 @@ import { execFileSync } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import log from '../../utils/logger.js';
-import { getOrBuildCache } from './codebaseCache.js';
+import { ensureCodebaseContext } from './contextBuilder.js';
 
 let _client = null;
 function client() {
@@ -20,7 +20,7 @@ const SYSTEM_PROMPT = `You are a senior software engineer planning a surgical ch
 
 You will be given:
 1. The enhancement request (what the user wants)
-2. The current repo tree
+2. A pre-analyzed codebase context document (architecture, patterns, key files)
 3. Relevant source files from the repo
 4. Existing test files in the repo (so you can follow established patterns)
 5. Per-app context notes from the operator (if any)
@@ -54,31 +54,21 @@ Guidelines:
 - Respect any constraints in the operator's per-app context notes.
 - Estimate tokens conservatively (the budget will be enforced).`;
 
-function getTestFiles(fileTree, maxFiles = 6) {
-  return fileTree.split('\n').filter(f =>
-    f && (
-      /\.(test|spec)\.(js|ts|jsx|tsx|mjs|cjs)$/.test(f) ||
-      /\/(tests?|__tests__|spec)\//.test(f)
-    )
-  ).slice(0, maxFiles);
-}
-
-function grepRelevantFiles(repoDir, filesMap, keywords, maxFiles = 8) {
+function grepRelevantFiles(repoDir, fileTree, keywords, maxFiles = 6) {
   const files = new Set();
-  const cachedPaths = Object.keys(filesMap);
+  const allPaths = fileTree.split('\n').filter(Boolean);
 
-  // Search cached content first (fast, no disk I/O)
+  // Keyword match against file paths first (cheap)
   for (const kw of keywords) {
     if (!kw || kw.length < 3) continue;
     const kwLower = kw.toLowerCase();
-    for (const p of cachedPaths) {
-      if ((filesMap[p] || '').toLowerCase().includes(kwLower)) files.add(p);
+    for (const p of allPaths) {
+      if (p.toLowerCase().includes(kwLower)) files.add(p);
       if (files.size >= maxFiles) break;
     }
-    if (files.size >= maxFiles) break;
   }
 
-  // Fall back to grep for files not in cache
+  // grep file contents for remaining slots
   if (files.size < maxFiles) {
     for (const kw of keywords) {
       if (!kw || kw.length < 3) continue;
@@ -89,9 +79,7 @@ function grepRelevantFiles(repoDir, filesMap, keywords, maxFiles = 8) {
         ], { encoding: 'utf8', timeout: 10000, stdio: 'pipe' });
         for (const f of out.trim().split('\n')) {
           if (f && !f.includes('node_modules') && !f.includes('.git/')) {
-            // Store relative path
-            const rel = f.startsWith(repoDir) ? f.slice(repoDir.length + 1) : f;
-            files.add(rel);
+            files.add(f.startsWith(repoDir) ? f.slice(repoDir.length + 1) : f);
           }
         }
       } catch (_) {}
@@ -102,72 +90,76 @@ function grepRelevantFiles(repoDir, filesMap, keywords, maxFiles = 8) {
   return [...files].slice(0, maxFiles);
 }
 
-function readFileSafe(absPath, cachedContent, maxBytes = 20000) {
-  const content = cachedContent ?? (() => {
-    try { return readFileSync(absPath, 'utf8'); } catch (_) { return '(could not read file)'; }
-  })();
-  return content.length > maxBytes ? content.slice(0, maxBytes) + '\n... (truncated)' : content;
+function readFileSafe(absPath, maxBytes = 20000) {
+  try {
+    const c = readFileSync(absPath, 'utf8');
+    return c.length > maxBytes ? c.slice(0, maxBytes) + '\n...(truncated)' : c;
+  } catch (_) { return '(could not read file)'; }
+}
+
+function getTestFiles(fileTree, maxFiles = 4) {
+  return fileTree.split('\n').filter(f =>
+    f && (
+      /\.(test|spec)\.(js|ts|jsx|tsx|mjs|cjs)$/.test(f) ||
+      /\/(tests?|__tests__|spec)\//.test(f)
+    )
+  ).slice(0, maxFiles);
 }
 
 function extractKeywords(text) {
-  return text
-    .replace(/[^a-zA-Z0-9_\s]/g, ' ')
-    .split(/\s+/)
-    .filter(w => w.length >= 4)
-    .slice(0, 10);
+  return text.replace(/[^a-zA-Z0-9_\s]/g, ' ').split(/\s+/).filter(w => w.length >= 4).slice(0, 10);
 }
 
 function usdCost(usage) {
   const inPrice = parseFloat(process.env.SONNET_INPUT_PRICE_PER_MTOK || '3');
   const outPrice = parseFloat(process.env.SONNET_OUTPUT_PRICE_PER_MTOK || '15');
   const tokensIn = (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0);
-  const tokensOut = usage.output_tokens || 0;
-  return (tokensIn / 1_000_000) * inPrice + (tokensOut / 1_000_000) * outPrice;
+  return (tokensIn / 1_000_000) * inPrice + ((usage.output_tokens || 0) / 1_000_000) * outPrice;
 }
 
 function extractJsonBlock(text) {
   const fenced = text.match(/```json\s*([\s\S]*?)```/);
   const candidate = fenced ? fenced[1] : text;
   try { return JSON.parse(candidate.trim()); } catch (_) {}
-  const first = candidate.indexOf('{');
-  const last = candidate.lastIndexOf('}');
-  if (first >= 0 && last > first) {
-    try { return JSON.parse(candidate.slice(first, last + 1)); } catch (_) {}
-  }
+  const first = candidate.indexOf('{'), last = candidate.lastIndexOf('}');
+  if (first >= 0 && last > first) { try { return JSON.parse(candidate.slice(first, last + 1)); } catch (_) {} }
   return null;
 }
 
 export async function planEnhancement({ appSlug, request, repoDir, agentContext, priorComments, onChunk, onTokens }) {
-  const { fileTree, filesMap, gitHash, fromCache, builtAt } = getOrBuildCache(appSlug, repoDir);
+  // Step 1: get (or build) the AI-generated codebase context document
+  const { contextDoc, fileTree, gitHash, fromCache, builtAt } = await ensureCodebaseContext(appSlug, repoDir);
 
+  // Step 2: grep for files specifically relevant to this enhancement request
   const keywords = extractKeywords(request + ' ' + (priorComments || ''));
-  const relevantRelPaths = grepRelevantFiles(repoDir, filesMap, keywords);
-  const fileContents = relevantRelPaths
-    .map(rel => `### ${rel}\n\`\`\`\n${readFileSafe(join(repoDir, rel), filesMap[rel])}\n\`\`\``)
+  const relevantPaths = grepRelevantFiles(repoDir, fileTree, keywords);
+  const fileContents = relevantPaths
+    .map(rel => `### ${rel}\n\`\`\`\n${readFileSafe(join(repoDir, rel))}\n\`\`\``)
     .join('\n\n');
 
   const testPaths = getTestFiles(fileTree);
   const testContents = testPaths
-    .map(p => `### ${p}\n\`\`\`\n${readFileSafe(join(repoDir, p), filesMap[p], 6000)}\n\`\`\``)
+    .map(p => `### ${p}\n\`\`\`\n${readFileSafe(join(repoDir, p), 6000)}\n\`\`\``)
     .join('\n\n');
 
-  const cacheNote = fromCache
-    ? `Context snapshot: git ${gitHash?.slice(0, 8)} (cached ${builtAt?.slice(0, 16)} UTC — no changes since)`
-    : `Context snapshot: git ${gitHash?.slice(0, 8)} (freshly indexed)`;
+  const contextNote = fromCache
+    ? `git ${gitHash?.slice(0, 8)} · cached ${builtAt?.slice(0, 16)} UTC`
+    : `git ${gitHash?.slice(0, 8)} · freshly analyzed`;
 
   const userContent = [
     `## Enhancement request\n\n${request}`,
     priorComments ? `## Prior reviewer feedback\n\n${priorComments}` : '',
-    `## Repo tree\n\`\`\`\n${fileTree || '(could not read repo tree)'}\n\`\`\``,
+    contextDoc
+      ? `## Codebase context (${contextNote})\n\n${contextDoc}`
+      : `## Repo file tree\n\`\`\`\n${fileTree}\n\`\`\``,
     fileContents ? `## Relevant source files\n\n${fileContents}` : '',
     testContents
       ? `## Existing test files (follow these patterns)\n\n${testContents}`
       : '## Existing test files\n\n(none found — create the first test file)',
-    agentContext ? `## Per-app context (from operator)\n\n${agentContext}` : '',
-    `## Codebase context metadata\n\n${cacheNote}`,
+    agentContext ? `## Per-app operator notes\n\n${agentContext}` : '',
   ].filter(Boolean).join('\n\n---\n\n');
 
-  log.info(`AppStudio plan: ${MODEL}, ${relevantRelPaths.length} files, cache=${fromCache ? 'HIT' : 'MISS'}`);
+  log.info(`AppStudio plan: ${MODEL}, ${relevantPaths.length} files, context=${fromCache ? 'cached' : 'built'}`);
 
   let fullText = '';
   let streamInputTokens = 0, streamOutputTokens = 0;
@@ -196,9 +188,7 @@ export async function planEnhancement({ appSlug, request, repoDir, agentContext,
   const summary = fullText.replace(/```json[\s\S]*?```/, '').trim();
 
   return {
-    plan,
-    summary,
-    rawText: fullText,
+    plan, summary, rawText: fullText,
     tokensIn: finalMsg.usage?.input_tokens || 0,
     tokensOut: finalMsg.usage?.output_tokens || 0,
     costUsd: usdCost(finalMsg.usage || {}),
