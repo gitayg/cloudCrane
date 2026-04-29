@@ -6,24 +6,38 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="stylesheet" href="/docs/shared.css">
 <style>
-table{width:100%;border-collapse:collapse}
-th{text-align:left;padding:8px 12px;font-size:.75rem;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);font-weight:600}
-td{padding:10px 12px;border-bottom:1px solid var(--border);font-size:.88rem;vertical-align:middle}
-tr:last-child td{border-bottom:none}
-tr:hover td{background:var(--surface2)}
-.app-icon-wrap{display:inline-block;position:relative;width:24px;height:24px;border-radius:4px;cursor:pointer;margin-right:8px;vertical-align:middle;flex-shrink:0;overflow:hidden;background:var(--surface2);border:1px solid var(--border);transition:border-color .15s}
-.app-icon-wrap:hover{border-color:var(--accent)}
-.app-icon-ph{display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:.72rem;font-weight:700;color:var(--dim)}
-.app-icon-wrap img{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:none}
-.env-cell{display:flex;align-items:center;gap:6px}
-.env-ver{color:var(--dim);font-size:.78rem;font-family:monospace}
+.app-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:12px}
+.card-hdr{display:flex;align-items:flex-start;justify-content:space-between;padding:14px 16px;gap:12px}
+.card-meta{display:flex;align-items:flex-start;gap:10px;flex:1;min-width:0}
+.card-name-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-weight:600;font-size:.95rem}
+.card-desc{color:var(--dim);font-size:.78rem;margin-top:3px;max-width:480px;line-height:1.4}
+.card-res{font-size:.75rem;color:var(--dim);margin-top:4px}
+.card-hdr-actions{display:flex;align-items:center;gap:4px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;max-width:280px}
+.card-envs{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--border)}
+.card-env{padding:10px 16px}
+.card-env.prod{border-right:1px solid var(--border)}
+.env-heading{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);margin-bottom:7px}
+.env-heading.prod-heading{color:#22c55e88}
+.env-heading.sand-heading{color:#f59e0b88}
+.env-status-row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.env-ver{font-size:.82rem;font-family:monospace}
 .env-link{color:var(--dim);text-decoration:none;font-size:.78rem}
-.env-link:hover{color:var(--text)}
-.actions{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.env-link:hover{color:var(--accent)}
+.env-act-row{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.card-footer{padding:8px 14px;border-top:1px solid var(--border);background:var(--bg);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.evars-panel{border-top:1px solid var(--border);background:var(--surface2);padding:12px 16px;font-size:.82rem}
+.app-icon-wrap{display:inline-flex;position:relative;width:34px;height:34px;border-radius:7px;cursor:pointer;flex-shrink:0;overflow:hidden;background:var(--surface2);border:1px solid var(--border);transition:border-color .15s;align-items:center;justify-content:center}
+.app-icon-wrap:hover{border-color:var(--accent)}
+.app-icon-ph{font-size:.78rem;font-weight:700;color:var(--dim)}
+.app-icon-wrap img{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:none}
+.vis-badge{font-size:.65rem;padding:1px 6px;border-radius:4px;font-weight:600;white-space:nowrap}
+.vis-hidden{background:#6b728022;color:var(--dim)}
+.vis-private{background:#3b82f622;color:#3b82f6}
+.vis-public{background:#22c55e22;color:#22c55e}
+.cat-badge{font-size:.65rem;background:var(--surface2);border:1px solid var(--border);color:var(--dim);border-radius:4px;padding:1px 5px}
 .btn-xs{font-size:.72rem;padding:2px 8px}
 .btn-red{font-size:.65rem;padding:1px 6px;color:var(--red);background:none;border-color:var(--red);opacity:.8}
 .btn-red:hover{opacity:1}
-.evars-inner{padding:10px 14px;font-size:.82rem}
 /* Analyze wizard */
 .az-overlay{display:none;position:fixed;inset:0;background:#0008;z-index:200;align-items:center;justify-content:center}
 .az-overlay.open{display:flex}
@@ -34,8 +48,6 @@ tr:hover td{background:var(--surface2)}
 .az-input{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 11px;border-radius:7px;font-size:.88rem;font-family:inherit;width:100%;box-sizing:border-box}
 .az-input:focus{outline:none;border-color:var(--accent)}
 .az-section{font-size:.78rem;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-top:4px}
-.az-env-row{display:grid;grid-template-columns:160px 1fr auto;gap:8px;align-items:start;margin-bottom:8px;font-size:.82rem}
-.az-env-key{font-family:monospace;font-size:.8rem;padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-weight:600}
 .az-badge{font-size:.65rem;padding:2px 6px;border-radius:4px;font-weight:600;white-space:nowrap;align-self:center}
 .az-req{background:#ef444422;color:#ef4444}
 .az-opt{background:#6b728022;color:var(--dim)}
@@ -61,13 +73,12 @@ document.body.insertAdjacentHTML('beforeend',
   '<div class="page-content"><div class="container">' +
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
       '<h2 style="margin:0">Applications</h2>' +
-      '<button class="btn btn-primary" onclick="openAnalyzeWizard()" style="font-size:12px;padding:4px 14px">+ Add from GitHub</button>' +
-      '<button class="btn" onclick="generateAgentKey()" style="font-size:12px;padding:4px 14px">+ New App Agent</button>' +
+      '<div style="display:flex;gap:8px">' +
+        '<button class="btn btn-primary" onclick="openAnalyzeWizard()" style="font-size:12px;padding:4px 14px">+ Add from GitHub</button>' +
+        '<button class="btn" onclick="generateAgentKey()" style="font-size:12px;padding:4px 14px">+ New App Agent</button>' +
+      '</div>' +
     '</div>' +
-    '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden">' +
-      '<table><thead><tr><th>App</th><th>Production</th><th>Sandbox</th><th>Resources</th><th>Actions</th></tr></thead>' +
-      '<tbody id="appsBody"><tr><td colspan="5" style="color:var(--dim)">Loading...</td></tr></tbody></table>' +
-    '</div>' +
+    '<div id="appsBody"></div>' +
     '<h2 style="margin-top:24px">Unused Keys</h2><div id="unusedKeys"></div>' +
   '</div></div></div>');
 loadVersion(); loadUserInfo();
@@ -91,63 +102,171 @@ async function fetchLiveVersion(slug, env) {
   } catch(e) {}
 }
 
-function envCell(env, health, version, url, slug) {
-  const cls = health === 'healthy' ? 'dot-green' : health === 'down' ? 'dot-red' : 'dot-gray';
-  let html = '<div class="env-cell"><span class="dot ' + cls + '"></span>';
-  html += '<span class="env-ver" id="ver_' + slug + '_' + env + '">' + (version && version !== '-' ? 'v' + version : '—') + '</span>';
-  if (url) html += '<a href="#" class="env-link" onclick="openAppFrame(' + JSON.stringify(url).replace(/"/g, '&quot;') + ',' + JSON.stringify(slug).replace(/"/g, '&quot;') + ');return false">↗</a>';
-  html += '</div>';
-  return html;
-}
-
-function appRow(a) {
+// Build a card DOM node for one app (all user data via textContent / safe DOM)
+function buildAppCard(a) {
+  const sl = a.slug, nm = a.name;
   const prodH = (a.production && a.production.health && a.production.health.status) || 'unknown';
-  const sandH = (a.sandbox && a.sandbox.health && a.sandbox.health.status) || 'unknown';
-  const prodV = (a.production && a.production.deploy && a.production.deploy.version) || '-';
-  const sandV = (a.sandbox && a.sandbox.deploy && a.sandbox.deploy.version) || '-';
-  const prodUrl = window.location.origin + '/' + a.slug;
-  const sandUrl = window.location.origin + '/' + a.slug + '-sandbox';
-  const sl = esc(a.slug), nm = esc(a.name);
-
-  let row = '<tr>';
-  // Always load icons through the API — never via the app's own path which may 502
-  const iconSrc = '/api/apps/' + sl + '/icon';
-  const iconFallback = 'this.onerror=null;this.style.display=\'none\'';
-  const publicBadge = a.public_access ? ' <span style="font-size:10px;background:#3b82f622;border:1px solid #3b82f644;color:#3b82f6;border-radius:3px;padding:1px 5px;vertical-align:middle">PUBLIC</span>' : '';
-  const catBadge = a.category ? ' <span style="font-size:10px;background:var(--surface2);border:1px solid var(--border);color:var(--dim);border-radius:3px;padding:1px 5px;vertical-align:middle">' + esc(a.category) + '</span>' : '';
-  const initial = (a.name && a.name[0]) ? a.name[0].toUpperCase() : (a.slug && a.slug[0] ? a.slug[0].toUpperCase() : '?');
-  row += '<td style="min-width:140px"><span class="app-icon-wrap" onclick="uploadIcon(event,\'' + sl + '\')" title="Click to upload icon"><span class="app-icon-ph">' + esc(initial) + '</span><img id="icon_' + sl + '" src="' + iconSrc + '" onload="this.style.display=\'block\'" onerror="' + iconFallback + '"></span><span style="font-weight:600">' + nm + '</span>' + publicBadge + catBadge + '</td>';
-  row += '<td>' + envCell('production', prodH, prodV, prodUrl, a.slug) + '</td>';
-  row += '<td>' + envCell('sandbox', sandH, sandV, sandUrl, a.slug) + '</td>';
+  const sandH = (a.sandbox  && a.sandbox.health  && a.sandbox.health.status)  || 'unknown';
+  const prodV = (a.production && a.production.deploy && a.production.deploy.version) || '';
+  const sandV = (a.sandbox  && a.sandbox.deploy  && a.sandbox.deploy.version)  || '';
+  const prodUrl = window.location.origin + '/' + sl;
+  const sandUrl = window.location.origin + '/' + sl + '-sandbox';
   const rl = a.resource_limits || {};
   const ram = rl.max_ram_mb || 512;
   const cpu = rl.max_cpu_percent || 50;
-  const ramLabel = ram >= 1024 ? (ram / 1024).toFixed(ram % 1024 === 0 ? 0 : 1) + 'GB' : ram + 'MB';
-  const cpuLabel = cpu + '%';
-  row += '<td style="white-space:nowrap;font-size:.82rem"><span style="color:var(--dim)">RAM</span> ' + ramLabel + ' &nbsp; <span style="color:var(--dim)">CPU</span> ' + cpuLabel;
+  const ramLabel = ram >= 1024 ? (ram / 1024).toFixed(ram % 1024 === 0 ? 0 : 1) + ' GB' : ram + ' MB';
+  const vis = a.visibility || (a.public_access ? 'public' : 'private');
+
+  function el(tag, attrs, text) {
+    const e = document.createElement(tag);
+    if (attrs) Object.entries(attrs).forEach(function([k,v]) {
+      if (k === 'style') e.style.cssText = v;
+      else if (k === 'class') e.className = v;
+      else e.setAttribute(k, v);
+    });
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+  function btn(label, cls, onclick, title) {
+    const b = el('button', { class: 'btn ' + (cls || ''), title: title || '' });
+    b.textContent = label;
+    b.addEventListener('click', onclick);
+    return b;
+  }
+  function dot(health) {
+    const cls = health === 'healthy' ? 'dot-green' : health === 'down' ? 'dot-red' : 'dot-gray';
+    return el('span', { class: 'dot ' + cls });
+  }
+
+  const card = el('div', { class: 'app-card' });
+
+  // ── Header (app-level) ─────────────────────────────────────
+  const hdr = el('div', { class: 'card-hdr' });
+
+  // Icon
+  const iconWrap = el('span', { class: 'app-icon-wrap', title: 'Click to upload icon' });
+  iconWrap.addEventListener('click', function(e) { uploadIcon(e, sl); });
+  const initial = (nm && nm[0]) ? nm[0].toUpperCase() : (sl[0] || '?').toUpperCase();
+  iconWrap.appendChild(el('span', { class: 'app-icon-ph' }, initial));
+  const img = el('img', { id: 'icon_' + sl, src: '/api/apps/' + sl + '/icon' });
+  img.addEventListener('load', function() { img.style.display = 'block'; });
+  img.addEventListener('error', function() { img.style.display = 'none'; });
+  iconWrap.appendChild(img);
+
+  // Meta (name + desc + resources)
+  const meta = el('div', { class: 'card-meta' });
+  meta.appendChild(iconWrap);
+  const metaText = el('div');
+
+  const nameRow = el('div', { class: 'card-name-row' });
+  nameRow.appendChild(el('span', {}, nm));
+
+  // Visibility badge
+  const visMap = { hidden: ['vis-hidden','🔒 Hidden'], private: ['vis-private','🔑 Private'], public: ['vis-public','🌐 Public'] };
+  const [visCls, visLabel] = visMap[vis] || visMap.private;
+  nameRow.appendChild(el('span', { class: 'vis-badge ' + visCls }, visLabel));
+  if (a.category) nameRow.appendChild(el('span', { class: 'cat-badge' }, a.category));
+  metaText.appendChild(nameRow);
+
+  if (a.description) {
+    const desc = el('div', { class: 'card-desc' });
+    desc.textContent = a.description;
+    metaText.appendChild(desc);
+  }
+  const resRow = el('div', { class: 'card-res' });
+  const ramDim = el('span', { style: 'color:var(--dim)' }, 'RAM ');
+  const cpuDim = el('span', { style: 'color:var(--dim);margin-left:12px' }, 'CPU ');
+  resRow.appendChild(ramDim);
+  resRow.appendChild(document.createTextNode(ramLabel));
+  resRow.appendChild(cpuDim);
+  resRow.appendChild(document.createTextNode(cpu + '%'));
+  metaText.appendChild(resRow);
+  meta.appendChild(metaText);
+  hdr.appendChild(meta);
+
+  // Header actions
+  const actions = el('div', { class: 'card-hdr-actions' });
+
+  // Visibility select
+  const visSel = el('select', { title: 'Visibility', style: 'font-size:.72rem;padding:2px 6px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer' });
+  [['hidden','🔒 Hidden'],['private','🔑 Private'],['public','🌐 Public']].forEach(function([v,label]) {
+    const opt = el('option', { value: v }, label);
+    if (v === vis) opt.selected = true;
+    visSel.appendChild(opt);
+  });
+  visSel.addEventListener('change', function() { setVisibility(sl, visSel.value); });
+  actions.appendChild(visSel);
+
+  const manageLink = el('a', { href: '/app?slug=' + sl, class: 'btn btn-xs' }, 'manage');
+  actions.appendChild(manageLink);
+  actions.appendChild(btn('onboard', 'btn-xs', function() { showAppToken(sl); }));
   if (isAdmin()) {
-    row += ' <button class="btn btn-xs" onclick="editResources(\'' + sl + '\',' + ram + ',' + cpu + ')" title="Edit resource limits (admin)" style="margin-left:6px">⚙</button>';
+    actions.appendChild(btn('tag', 'btn-xs', function() { setCategory(sl, a.category || ''); }, 'Set category'));
+    actions.appendChild(btn('⚙ limits', 'btn-xs', function() { editResources(sl, ram, cpu); }, 'Edit resource limits'));
   }
-  row += '</td>';
-  row += '<td><div class="actions">';
-  row += '<button class="btn btn-xs" onclick="toggleEnvVars(\'' + sl + '\',\'production\')">prod env</button>';
-  row += '<button class="btn btn-xs" onclick="restartApp(\'' + sl + '\',\'production\')">↺ prod</button>';
-  row += '<button class="btn btn-xs" onclick="toggleEnvVars(\'' + sl + '\',\'sandbox\')">sand env</button>';
-  row += '<button class="btn btn-xs" onclick="restartApp(\'' + sl + '\',\'sandbox\')">↺ sand</button>';
-  row += '<a href="/app?slug=' + sl + '" class="btn btn-xs">manage</a>';
-  row += '<button class="btn btn-xs" onclick="showAppToken(\'' + sl + '\')">onboard</button>';
-  if (a.source_type === 'github') {
-    row += '<button class="btn btn-xs" id="updbtn_' + sl + '" onclick="checkUpdates(\'' + sl + '\')">↑ check</button>';
-    row += '<button class="btn btn-xs" id="hookbtn_' + sl + '" onclick="registerGithubHook(\'' + sl + '\')">gh hook</button>';
+  actions.appendChild(btn('delete', 'btn-xs btn-red', function() { deleteApp(sl, nm); }));
+  hdr.appendChild(actions);
+  card.appendChild(hdr);
+
+  // ── Env columns (per-env) ──────────────────────────────────
+  const envs = el('div', { class: 'card-envs' });
+
+  function buildEnvCol(env, health, version, url, isProd) {
+    const col = el('div', { class: 'card-env' + (isProd ? ' prod' : ' sand') });
+    col.appendChild(el('div', { class: 'env-heading ' + (isProd ? 'prod-heading' : 'sand-heading') }, isProd ? 'Production' : 'Sandbox'));
+
+    const statusRow = el('div', { class: 'env-status-row' });
+    statusRow.appendChild(dot(health));
+    const verSpan = el('span', { class: 'env-ver', id: 'ver_' + sl + '_' + env }, version ? 'v' + version : '—');
+    statusRow.appendChild(verSpan);
+    if (url) {
+      const link = el('a', { href: '#', class: 'env-link' }, '↗ open');
+      link.addEventListener('click', function(e) { e.preventDefault(); openAppFrame(url, nm); });
+      statusRow.appendChild(link);
+    }
+    col.appendChild(statusRow);
+
+    const actRow = el('div', { class: 'env-act-row' });
+    actRow.appendChild(btn('env vars', 'btn-xs', function() { toggleEnvVars(sl, env); }));
+    actRow.appendChild(btn('↺ restart', 'btn-xs', function(e) { restartApp(sl, env, e.target); }));
+    col.appendChild(actRow);
+    return col;
   }
-  row += '<button id="pubBtn_' + sl + '" class="btn btn-xs" style="' + (a.public_access ? 'background:#3b82f622;color:#3b82f6;border:1px solid #3b82f644' : '') + '" onclick="togglePublic(\'' + sl + '\',' + (a.public_access ? 1 : 0) + ')" title="' + (a.public_access ? 'Public — any authenticated user can access. Click to make private.' : 'Private — only assigned users can access. Click to make public.') + '">' + (a.public_access ? '🌐 public' : '🔒 private') + '</button>';
-  if (isAdmin()) {
-    row += '<button class="btn btn-xs" onclick="setCategory(\'' + sl + '\',' + jsStr(a.category || '') + ')" title="Set category">tag</button>';
+
+  envs.appendChild(buildEnvCol('production', prodH, prodV, prodUrl, true));
+  envs.appendChild(buildEnvCol('sandbox',    sandH, sandV, sandUrl, false));
+  card.appendChild(envs);
+
+  // ── Env vars panel (expandable) ────────────────────────────
+  const evarsPanel = el('div', { id: 'evars_' + sl, class: 'evars-panel', style: 'display:none' });
+  const evarsInner = el('div', { id: 'evarsInner_' + sl });
+  evarsPanel.appendChild(evarsInner);
+  card.appendChild(evarsPanel);
+
+  // ── Footer (GitHub / source actions) ──────────────────────
+  if (a.source_type === 'github' || a.github_url) {
+    const footer = el('div', { class: 'card-footer' });
+    if (a.github_url) {
+      const ghLink = el('a', { href: a.github_url, target: '_blank', style: 'color:var(--dim);font-size:.75rem;text-decoration:none' }, '⎊ GitHub');
+      footer.appendChild(ghLink);
+    }
+    if (a.source_type === 'github') {
+      const updBtn = el('button', { class: 'btn btn-xs', id: 'updbtn_' + sl }, '↑ check updates');
+      updBtn.addEventListener('click', function() { checkUpdates(sl); });
+      footer.appendChild(updBtn);
+      const hookBtn = el('button', { class: 'btn btn-xs', id: 'hookbtn_' + sl }, 'gh hook');
+      hookBtn.addEventListener('click', function() { registerGithubHook(sl); });
+      footer.appendChild(hookBtn);
+    }
+    card.appendChild(footer);
   }
-  row += '<button class="btn btn-xs btn-red" onclick="deleteApp(\'' + sl + '\',\'' + nm + '\')">delete</button>';
-  row += '</div></td></tr>';
-  row += '<tr id="evars_' + sl + '" style="display:none"><td colspan="5" style="padding:0;background:var(--surface2)"><div class="evars-inner" id="evarsInner_' + sl + '"></div></td></tr>';
-  return row;
+
+  return card;
+}
+
+async function setVisibility(slug, visibility) {
+  const data = await apiPut('/api/apps/' + slug, { visibility });
+  if (data.error) { alert('Failed: ' + data.error.message); loadApps(); }
 }
 
 async function showAppToken(slug) {
@@ -168,22 +287,12 @@ async function generateAgentKey() {
   loadApps();
 }
 
-async function restartApp(slug, env) {
-  const btn = event.target;
-  const orig = btn.textContent;
-  btn.disabled = true; btn.textContent = '...';
+async function restartApp(slug, env, btnEl) {
+  const orig = btnEl.textContent;
+  btnEl.disabled = true; btnEl.textContent = '...';
   const data = await apiPost('/api/apps/' + slug + '/restart/' + env);
-  btn.disabled = false; btn.textContent = orig;
+  btnEl.disabled = false; btnEl.textContent = orig;
   if (data.error) alert('Restart failed: ' + data.error.message);
-}
-
-async function togglePublic(slug, current) {
-  const newVal = current ? 0 : 1;
-  const label = newVal ? 'public (any authenticated user)' : 'private (assigned users only)';
-  if (!confirm('Set "' + slug + '" to ' + label + '?')) return;
-  const data = await apiPut('/api/apps/' + slug, { public_access: newVal });
-  if (data.error) { alert('Failed: ' + data.error.message); return; }
-  loadApps();
 }
 
 async function deleteApp(slug, name) {
@@ -201,19 +310,16 @@ async function checkUpdates(slug) {
   btn.disabled = false;
   if (data.error) { btn.textContent = orig; alert('Error: ' + data.error.message); return; }
   if (data.not_applicable) {
-    btn.textContent = '⚠ no GitHub URL';
-    btn.style.color = 'var(--dim)';
+    btn.textContent = '⚠ no GitHub URL'; btn.style.color = 'var(--dim)';
   } else if (!data.available) {
-    btn.textContent = '✓ up to date';
-    btn.style.color = 'var(--green)';
+    btn.textContent = '✓ up to date'; btn.style.color = 'var(--green)';
   } else {
     var label = data.latest_message || data.latest_sha;
     if (label.length > 30) label = label.slice(0, 30) + '…';
-    btn.textContent = '↑ ' + label;
-    btn.style.color = 'var(--yellow)';
+    btn.textContent = '↑ ' + label; btn.style.color = 'var(--yellow)';
     btn.title = data.latest_message + ' (' + data.latest_sha + ')';
   }
-  setTimeout(() => { btn.textContent = orig; btn.style.color = ''; btn.title = ''; }, 5000);
+  setTimeout(function() { btn.textContent = orig; btn.style.color = ''; btn.title = ''; }, 5000);
 }
 
 async function registerGithubHook(slug) {
@@ -228,15 +334,15 @@ async function registerGithubHook(slug) {
 
 let _openEvars = null;
 async function toggleEnvVars(slug, env) {
-  const row = document.getElementById('evars_' + slug);
+  const panel = document.getElementById('evars_' + slug);
   const inner = document.getElementById('evarsInner_' + slug);
   if (_openEvars && _openEvars.slug === slug && _openEvars.env === env) {
-    row.style.display = 'none'; _openEvars = null; return;
+    panel.style.display = 'none'; _openEvars = null; return;
   }
   if (_openEvars) document.getElementById('evars_' + _openEvars.slug).style.display = 'none';
   _openEvars = { slug, env };
-  row.style.display = '';
-  inner.textContent = 'Loading...';
+  panel.style.display = '';
+  inner.textContent = 'Loading…';
   await renderEnvVars(slug, env, inner);
 }
 
@@ -247,8 +353,8 @@ async function renderEnvVars(slug, env, inner) {
     inner.textContent = '';
     const iStyle = 'background:var(--bg);border:1px solid var(--border);color:var(--text);padding:3px 7px;border-radius:4px;font-size:.8rem;font-family:monospace';
     const hdrDiv = document.createElement('div');
-    hdrDiv.style.cssText = 'font-size:.78rem;color:var(--dim);margin-bottom:8px';
-    hdrDiv.textContent = (env === 'production' ? 'Production' : 'Sandbox') + ' \u2014 ' + (data.vars ? data.vars.length : 0) + ' vars';
+    hdrDiv.style.cssText = 'font-size:.78rem;color:var(--dim);margin-bottom:8px;font-weight:600';
+    hdrDiv.textContent = (env === 'production' ? 'Production' : 'Sandbox') + ' — ' + (data.vars ? data.vars.length : 0) + ' vars';
     inner.appendChild(hdrDiv);
     if (data.vars && data.vars.length) {
       const tbl = document.createElement('table');
@@ -266,15 +372,14 @@ async function renderEnvVars(slug, env, inner) {
         tdKey.textContent = v.key;
         const tdVal = tr.insertCell();
         const inp = document.createElement('input');
-        inp.value = v.value;
-        inp.style.cssText = iStyle + ';width:100%';
+        inp.value = v.value; inp.style.cssText = iStyle + ';width:100%';
         inp.dataset.slug = slug; inp.dataset.env = env; inp.dataset.key = v.key;
         inp.addEventListener('change', function() { updateEnvVar(this.dataset.slug, this.dataset.env, this.dataset.key, this.value); });
         tdVal.appendChild(inp);
         const tdDel = tr.insertCell();
         const delBtn = document.createElement('button');
         delBtn.style.cssText = 'background:none;border:none;color:var(--dim);cursor:pointer;font-size:.85rem;padding:0 4px';
-        delBtn.textContent = '\xd7';
+        delBtn.textContent = '×';
         delBtn.dataset.slug = slug; delBtn.dataset.env = env; delBtn.dataset.key = v.key;
         delBtn.addEventListener('click', function() { deleteEnvVar(this.dataset.slug, this.dataset.env, this.dataset.key); });
         tdDel.appendChild(delBtn);
@@ -284,15 +389,11 @@ async function renderEnvVars(slug, env, inner) {
     const addRow = document.createElement('div');
     addRow.style.cssText = 'display:flex;gap:4px';
     const ekInp = document.createElement('input');
-    ekInp.id = 'ek_' + slug + '_' + env; ekInp.placeholder = 'NEW_KEY';
-    ekInp.style.cssText = iStyle + ';width:130px';
+    ekInp.id = 'ek_' + slug + '_' + env; ekInp.placeholder = 'NEW_KEY'; ekInp.style.cssText = iStyle + ';width:130px';
     const evInp = document.createElement('input');
-    evInp.id = 'ev_' + slug + '_' + env; evInp.placeholder = 'value';
-    evInp.style.cssText = iStyle + ';flex:1';
+    evInp.id = 'ev_' + slug + '_' + env; evInp.placeholder = 'value'; evInp.style.cssText = iStyle + ';flex:1';
     const addBtn = document.createElement('button');
-    addBtn.className = 'btn';
-    addBtn.style.cssText = 'font-size:.78rem;padding:3px 12px';
-    addBtn.textContent = 'Add';
+    addBtn.className = 'btn'; addBtn.style.cssText = 'font-size:.78rem;padding:3px 12px'; addBtn.textContent = 'Add';
     addBtn.dataset.slug = slug; addBtn.dataset.env = env;
     addBtn.addEventListener('click', function() { addEnvVar(this.dataset.slug, this.dataset.env); });
     addRow.appendChild(ekInp); addRow.appendChild(evInp); addRow.appendChild(addBtn);
@@ -301,8 +402,7 @@ async function renderEnvVars(slug, env, inner) {
       data.warnings.forEach(function(w) {
         const wDiv = document.createElement('div');
         wDiv.style.cssText = 'color:var(--yellow);font-size:.78rem;margin-top:4px';
-        wDiv.textContent = w;
-        inner.appendChild(wDiv);
+        wDiv.textContent = w; inner.appendChild(wDiv);
       });
     }
   } catch(e) { inner.textContent = e.message; }
@@ -335,49 +435,36 @@ async function uploadIcon(event, slug) {
     const formData = new FormData();
     formData.append('icon', file);
     try {
-      const res = await fetch('/api/apps/' + slug + '/icon', {
-        method: 'POST',
-        headers: { 'X-API-Key': KEY },
-        body: formData
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        alert('Upload failed: ' + (data.error?.message || 'Unknown error'));
-        return;
-      }
+      const res = await fetch('/api/apps/' + slug + '/icon', { method: 'POST', headers: { 'X-API-Key': KEY }, body: formData });
+      if (!res.ok) { const d = await res.json(); alert('Upload failed: ' + (d.error && d.error.message || 'Unknown error')); return; }
       const img = document.getElementById('icon_' + slug);
-      if (img) {
-        img.onload = function() { img.style.display = 'block'; };
-        img.src = '/api/apps/' + slug + '/icon?t=' + Date.now();
-      }
-    } catch(e) {
-      alert('Upload failed: ' + e.message);
-    }
+      if (img) { img.addEventListener('load', function() { img.style.display = 'block'; }, { once: true }); img.src = '/api/apps/' + slug + '/icon?t=' + Date.now(); }
+    } catch(e) { alert('Upload failed: ' + e.message); }
   };
   input.click();
 }
 
 async function loadApps() {
   const apps = await apiFetch('/api/apps');
-  const tbody = document.getElementById('appsBody');
-  tbody.textContent = '';
+  const body = document.getElementById('appsBody');
+  body.textContent = '';
   if (!apps.apps || !apps.apps.length) {
-    const tr = document.createElement('tr');
-    const td = document.createElement('td');
-    td.colSpan = 5; td.style.color = 'var(--dim)'; td.textContent = 'No apps yet.';
-    tr.appendChild(td); tbody.appendChild(tr);
+    const empty = document.createElement('div');
+    empty.style.cssText = 'color:var(--dim);padding:24px 0';
+    empty.textContent = 'No apps yet.';
+    body.appendChild(empty);
     return;
   }
   apps.apps.forEach(function(a) {
     try {
-      tbody.insertAdjacentHTML('beforeend', appRow(a));
+      body.appendChild(buildAppCard(a));
     } catch (e) {
-      console.error('appRow failed for', a && a.slug, e);
-      const tr = document.createElement('tr');
-      const td = document.createElement('td');
-      td.colSpan = 5; td.style.color = 'var(--red)';
-      td.textContent = (a && a.slug ? a.slug : '?') + ': render error — ' + e.message;
-      tr.appendChild(td); tbody.appendChild(tr);
+      console.error('buildAppCard failed for', a && a.slug, e);
+      const errDiv = document.createElement('div');
+      errDiv.className = 'app-card';
+      errDiv.style.cssText = 'padding:12px 16px;color:var(--red)';
+      errDiv.textContent = (a && a.slug || '?') + ': render error — ' + e.message;
+      body.appendChild(errDiv);
     }
   });
   apps.apps.forEach(function(a) {
@@ -393,31 +480,32 @@ async function loadApps() {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden';
     const tbl = document.createElement('table');
+    tbl.style.cssText = 'width:100%;border-collapse:collapse';
     const thead = document.createElement('thead');
     const hdr = document.createElement('tr');
-    ['ID','Name','Email','Created',''].forEach(h => { const th = document.createElement('th'); th.textContent = h; hdr.appendChild(th); });
+    ['ID','Name','Email','Created',''].forEach(function(h) {
+      const th = document.createElement('th');
+      th.style.cssText = 'text-align:left;padding:8px 12px;font-size:.75rem;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);font-weight:600';
+      th.textContent = h; hdr.appendChild(th);
+    });
     thead.appendChild(hdr); tbl.appendChild(thead);
     const utbody = document.createElement('tbody');
     unused.forEach(function(u) {
       const tr = document.createElement('tr');
-      const tdId = tr.insertCell(); tdId.style.color = 'var(--dim)'; tdId.textContent = u.id;
-      tr.insertCell().textContent = u.name;
-      tr.insertCell().textContent = u.email || '\u2014';
-      const tdDate = tr.insertCell(); tdDate.style.cssText = 'color:var(--dim);font-size:.78rem'; tdDate.textContent = u.created_at || '';
-      const tdAct = tr.insertCell();
-      const btn = document.createElement('button');
-      btn.className = 'btn btn-red';
-      btn.style.cssText = 'font-size:.72rem;padding:2px 10px';
-      btn.textContent = 'Delete';
-      btn.dataset.id = u.id; btn.dataset.name = u.name;
-      btn.addEventListener('click', function() { delUser(parseInt(this.dataset.id), this.dataset.name); });
-      tdAct.appendChild(btn);
-      utbody.appendChild(tr);
+      const tdId = tr.insertCell(); tdId.style.cssText = 'padding:8px 12px;font-size:.88rem;color:var(--dim)'; tdId.textContent = u.id;
+      ['name','email','created_at'].forEach(function(f) {
+        const td = tr.insertCell(); td.style.cssText = 'padding:8px 12px;font-size:.88rem'; td.textContent = u[f] || '—';
+      });
+      const tdAct = tr.insertCell(); tdAct.style.cssText = 'padding:8px 12px';
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn btn-red'; delBtn.style.cssText = 'font-size:.72rem;padding:2px 10px'; delBtn.textContent = 'Delete';
+      delBtn.dataset.id = u.id; delBtn.dataset.name = u.name;
+      delBtn.addEventListener('click', function() { delUser(parseInt(this.dataset.id), this.dataset.name); });
+      tdAct.appendChild(delBtn); utbody.appendChild(tr);
     });
     tbl.appendChild(utbody); wrap.appendChild(tbl); unusedEl.appendChild(wrap);
   } else {
-    const div = document.createElement('div');
-    div.style.color = 'var(--dim)'; div.textContent = 'None';
+    const div = document.createElement('div'); div.style.color = 'var(--dim)'; div.textContent = 'None';
     unusedEl.appendChild(div);
   }
 }
@@ -434,13 +522,12 @@ async function editResources(slug, currentRam, currentCpu) {
   if (ramStr === null) return;
   const cpuStr = prompt('Max CPU (%, 5-800; 100 = 1 full core):', String(currentCpu));
   if (cpuStr === null) return;
-  const ram = parseInt(ramStr, 10);
-  const cpu = parseInt(cpuStr, 10);
+  const ram = parseInt(ramStr, 10), cpu = parseInt(cpuStr, 10);
   if (!ram || ram < 64 || ram > 16384) { alert('RAM must be 64-16384 MB'); return; }
   if (!cpu || cpu < 5 || cpu > 800) { alert('CPU must be 5-800 percent'); return; }
   const data = await apiPut('/api/apps/' + slug, { max_ram_mb: ram, max_cpu_percent: cpu });
   if (data.error) { alert('Failed: ' + data.error.message); return; }
-  alert('Resource limits updated. Takes effect on the next deploy (container must be recreated to apply cgroup changes).');
+  alert('Resource limits updated. Takes effect on next deploy.');
   loadApps();
 }
 
@@ -490,19 +577,10 @@ loadApps();
       <span id="azFramework" style="font-size:.78rem;background:var(--surface2);border:1px solid var(--border);padding:2px 8px;border-radius:5px;color:var(--dim)"></span>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div class="az-field">
-        <label class="az-label">App Name</label>
-        <input id="azName" class="az-input" />
-      </div>
-      <div class="az-field">
-        <label class="az-label">Slug</label>
-        <input id="azSlug" class="az-input" />
-      </div>
+      <div class="az-field"><label class="az-label">App Name</label><input id="azName" class="az-input" /></div>
+      <div class="az-field"><label class="az-label">Slug</label><input id="azSlug" class="az-input" /></div>
     </div>
-    <div class="az-field">
-      <label class="az-label">Description</label>
-      <input id="azDesc" class="az-input" />
-    </div>
+    <div class="az-field"><label class="az-label">Description</label><input id="azDesc" class="az-input" /></div>
     <div id="azEnvSection" style="display:none">
       <div class="az-section" style="margin:14px 0 4px">Environment Variables</div>
       <p style="font-size:.78rem;color:var(--dim);margin:0 0 12px">Fill values now or leave blank to set later.</p>
@@ -533,10 +611,7 @@ function openAnalyzeWizard() {
   document.getElementById('azToken').value = '';
   document.getElementById('azOverlay').classList.add('open');
 }
-
-function closeAnalyzeWizard() {
-  document.getElementById('azOverlay').classList.remove('open');
-}
+function closeAnalyzeWizard() { document.getElementById('azOverlay').classList.remove('open'); }
 
 async function runAnalyze() {
   const url = document.getElementById('azUrl').value.trim();
@@ -569,7 +644,6 @@ function renderAnalysis(a) {
   document.getElementById('azName').value = a.name || '';
   document.getElementById('azSlug').value = a.slug || '';
   document.getElementById('azDesc').value = a.description || '';
-
   const rows = document.getElementById('azEnvRows');
   rows.textContent = '';
   if (a.env_vars && a.env_vars.length) {
@@ -577,7 +651,6 @@ function renderAnalysis(a) {
     a.env_vars.forEach(function(v) {
       const wrap = document.createElement('div');
       wrap.style.cssText = 'display:grid;grid-template-columns:180px 1fr;gap:8px;margin-bottom:10px;align-items:start';
-
       const left = document.createElement('div');
       const key = document.createElement('div');
       key.style.cssText = 'font-family:monospace;font-size:.78rem;font-weight:700;color:var(--text);padding:6px 0 3px';
@@ -585,35 +658,22 @@ function renderAnalysis(a) {
       const badge = document.createElement('span');
       badge.className = 'az-badge ' + (v.required ? 'az-req' : 'az-opt');
       badge.textContent = v.required ? 'required' : 'optional';
-      left.appendChild(key);
-      left.appendChild(badge);
-
+      left.appendChild(key); left.appendChild(badge);
       const right = document.createElement('div');
       const inp = document.createElement('input');
-      inp.className = 'az-input';
-      inp.dataset.envKey = v.key;
-      inp.placeholder = v.example || v.description || '';
-      inp.style.fontSize = '.82rem';
+      inp.className = 'az-input'; inp.dataset.envKey = v.key;
+      inp.placeholder = v.example || v.description || ''; inp.style.fontSize = '.82rem';
       const desc = document.createElement('div');
       desc.style.cssText = 'font-size:.72rem;color:var(--dim);margin-top:4px;line-height:1.4';
       desc.textContent = v.description || '';
-      right.appendChild(inp);
-      right.appendChild(desc);
-
-      wrap.appendChild(left);
-      wrap.appendChild(right);
-      rows.appendChild(wrap);
+      right.appendChild(inp); right.appendChild(desc);
+      wrap.appendChild(left); wrap.appendChild(right); rows.appendChild(wrap);
     });
-  } else {
-    document.getElementById('azEnvSection').style.display = 'none';
-  }
-
+  } else { document.getElementById('azEnvSection').style.display = 'none'; }
   if (a.notes && a.notes.trim()) {
     document.getElementById('azNotesSection').style.display = '';
     document.getElementById('azNotes').textContent = a.notes;
-  } else {
-    document.getElementById('azNotesSection').style.display = 'none';
-  }
+  } else { document.getElementById('azNotesSection').style.display = 'none'; }
 }
 
 async function createFromAnalysis() {
@@ -632,8 +692,6 @@ async function createFromAnalysis() {
       source_type: 'github',
     });
     if (app.error) throw new Error(app.error.message);
-
-    // Set any filled-in env vars on both environments
     const vars = {};
     document.querySelectorAll('#azEnvRows input[data-env-key]').forEach(function(inp) {
       if (inp.value.trim()) vars[inp.dataset.envKey] = inp.value.trim();
@@ -642,9 +700,7 @@ async function createFromAnalysis() {
       await apiPut('/api/apps/' + slug + '/env/production', { vars });
       await apiPut('/api/apps/' + slug + '/env/sandbox', { vars });
     }
-
-    closeAnalyzeWizard();
-    loadApps();
+    closeAnalyzeWizard(); loadApps();
   } catch (e) {
     alert('Failed: ' + e.message);
     btn.disabled = false; btn.textContent = 'Create App';
