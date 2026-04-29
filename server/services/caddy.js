@@ -132,6 +132,19 @@ export function generateCaddyfile() {
   // Everything else → AppCrane itself
   caddyfile += `    handle {\n`;
   caddyfile += `        reverse_proxy 127.0.0.1:${cranePort}\n`;
+  caddyfile += `    }\n\n`;
+
+  // Friendly crash page when a proxied app is down (container exited, port
+  // refused, etc.). Caddy turns connection-refused into a 502, we catch
+  // 502/503/504 here, rewrite to AppCrane's /api/_crashed handler which
+  // extracts the slug from the original path and renders a friendly HTML
+  // page with a link to logs.
+  caddyfile += `    handle_errors {\n`;
+  caddyfile += `        @appdown expression \`{err.status_code} in [502, 503, 504]\`\n`;
+  caddyfile += `        handle @appdown {\n`;
+  caddyfile += `            rewrite * /api/_crashed{uri}\n`;
+  caddyfile += `            reverse_proxy 127.0.0.1:${cranePort}\n`;
+  caddyfile += `        }\n`;
   caddyfile += `    }\n`;
   caddyfile += `}\n`;
 
