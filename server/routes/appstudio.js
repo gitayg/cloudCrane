@@ -11,6 +11,15 @@ const router = Router();
 
 router.use(requireAuth);
 
+function isAppAdmin(userId, appSlug) {
+  if (!userId || !appSlug) return false;
+  const db = getDb();
+  const app = db.prepare('SELECT id FROM apps WHERE slug = ?').get(appSlug);
+  if (!app) return false;
+  const row = db.prepare('SELECT app_role FROM app_user_roles WHERE app_id = ? AND user_id = ?').get(app.id, userId);
+  return row?.app_role === 'admin';
+}
+
 const AUTO_STATUSES = [
   'new', 'selected', 'planning', 'pending_user_review_plan',
   'plan_approved', 'coding', 'sandbox_ready', 'merged',
@@ -41,10 +50,13 @@ router.post('/:id/plan', requireAdmin, auditMiddleware('appstudio.plan'), (req, 
 /**
  * POST /api/appstudio/:id/approve-plan - Approve the AI plan → trigger code generation
  */
-router.post('/:id/approve-plan', requireAdmin, auditMiddleware('appstudio.approve-plan'), (req, res) => {
+router.post('/:id/approve-plan', auditMiddleware('appstudio.approve-plan'), (req, res) => {
   const db = getDb();
   const enh = db.prepare('SELECT * FROM enhancement_requests WHERE id = ?').get(req.params.id);
   if (!enh) throw new AppError('Enhancement not found', 404, 'NOT_FOUND');
+  if (req.user.role !== 'admin' && !isAppAdmin(req.user.id, enh.app_slug)) {
+    throw new AppError('Forbidden', 403, 'FORBIDDEN');
+  }
   if (!enh.ai_plan_json) throw new AppError('No plan to approve', 400, 'NO_PLAN');
 
   db.prepare("UPDATE enhancement_requests SET status = 'plan_approved' WHERE id = ?").run(enh.id);
@@ -79,10 +91,13 @@ router.post('/:id/plan-feedback', auditMiddleware('appstudio.plan-feedback'), (r
 /**
  * POST /api/appstudio/:id/approve-sandbox - Approve sandbox → open PR + promote
  */
-router.post('/:id/approve-sandbox', requireAdmin, auditMiddleware('appstudio.approve-sandbox'), (req, res) => {
+router.post('/:id/approve-sandbox', auditMiddleware('appstudio.approve-sandbox'), (req, res) => {
   const db = getDb();
   const enh = db.prepare('SELECT * FROM enhancement_requests WHERE id = ?').get(req.params.id);
   if (!enh) throw new AppError('Enhancement not found', 404, 'NOT_FOUND');
+  if (req.user.role !== 'admin' && !isAppAdmin(req.user.id, enh.app_slug)) {
+    throw new AppError('Forbidden', 403, 'FORBIDDEN');
+  }
   if (!enh.branch_name) throw new AppError('No branch to open PR from', 400, 'NO_BRANCH');
 
   db.prepare('INSERT INTO enhancement_jobs (enhancement_id, phase) VALUES (?, ?)').run(enh.id, 'open_pr');
@@ -93,10 +108,13 @@ router.post('/:id/approve-sandbox', requireAdmin, auditMiddleware('appstudio.app
 /**
  * POST /api/appstudio/:id/reject - Reject enhancement (stop all processing)
  */
-router.post('/:id/reject', requireAdmin, auditMiddleware('appstudio.reject'), (req, res) => {
+router.post('/:id/reject', auditMiddleware('appstudio.reject'), (req, res) => {
   const db = getDb();
   const enh = db.prepare('SELECT * FROM enhancement_requests WHERE id = ?').get(req.params.id);
   if (!enh) throw new AppError('Enhancement not found', 404, 'NOT_FOUND');
+  if (req.user.role !== 'admin' && !isAppAdmin(req.user.id, enh.app_slug)) {
+    throw new AppError('Forbidden', 403, 'FORBIDDEN');
+  }
 
   db.prepare("UPDATE enhancement_requests SET status = 'done', ai_log = COALESCE(ai_log, '') || ? WHERE id = ?")
     .run(`\n[${new Date().toISOString()}] Rejected by ${req.user.name}\n`, enh.id);
@@ -135,6 +153,59 @@ router.delete('/jobs/:jobId', requireAdmin, auditMiddleware('appstudio.delete-jo
 
   db.prepare('DELETE FROM enhancement_jobs WHERE id = ?').run(job.id);
   res.json({ message: 'Job deleted' });
+});
+
+// ── Anthropic API key management ────────────────────────────────────────
+// MUST be registered before GET /:id to prevent "anthropic-key" matching as an id param.
+
+const envFilePath = join(resolve(import.meta.dirname, '..', '..'), '.env');
+
+function writeEnvKey(key, value) {
+  let content = existsSync(envFilePath) ? readFileSync(envFilePath, 'utf8') : '';
+  const lines = content.split('\n');
+  const idx = lines.findIndex(l => l.trim().startsWith(key + '='));
+  if (idx !== -1) {
+    lines[idx] = `${key}=${value}`;
+  } else {
+    if (content && !content.endsWith('\n')) content += '\n';
+    lines.push(`${key}=${value}`);
+  }
+  writeFileSync(envFilePath, lines.join('\n'), 'utf8');
+}
+
+router.get('/anthropic-key', requireAdmin, async (req, res) => {
+  const configured = !!process.env.ANTHROPIC_API_KEY;
+  if (!configured) return res.json({ configured: false, source: null });
+  const inFile = existsSync(envFilePath) &&
+    readFileSync(envFilePath, 'utf8').split('\n').some(l => l.trim().startsWith('ANTHROPIC_API_KEY='));
+  if (req.query.test === '1') {
+    try {
+      const { default: Anthropic } = await import('@anthropic-ai/sdk');
+      const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      await client.messages.create({ model: 'claude-haiku-4-5-20251001', max_tokens: 1, messages: [{ role: 'user', content: 'hi' }] });
+      return res.json({ configured: true, source: inFile ? 'file' : 'env', suffix: process.env.ANTHROPIC_API_KEY.slice(-4), valid: true });
+    } catch (err) {
+      return res.json({ configured: true, source: inFile ? 'file' : 'env', suffix: process.env.ANTHROPIC_API_KEY.slice(-4), valid: false, error: err.message });
+    }
+  }
+  const suffix = process.env.ANTHROPIC_API_KEY.slice(-4);
+  res.json({ configured: true, source: inFile ? 'file' : 'env', suffix });
+});
+
+router.put('/anthropic-key', requireAdmin, auditMiddleware('appstudio.set-anthropic-key'), async (req, res) => {
+  const { key } = req.body || {};
+  if (!key || typeof key !== 'string' || !key.trim()) {
+    throw new AppError('key is required', 400, 'VALIDATION');
+  }
+  const trimmed = key.trim();
+  writeEnvKey('ANTHROPIC_API_KEY', trimmed);
+  process.env.ANTHROPIC_API_KEY = trimmed;
+  try {
+    const { startWorker } = await import('../services/appstudio/worker.js');
+    startWorker();
+  } catch (_) {}
+  log.info('Anthropic API key updated via settings');
+  res.json({ message: 'Anthropic API key saved and applied' });
 });
 
 /**
@@ -271,67 +342,6 @@ router.get('/usage/summary', requireAdmin, (req, res) => {
   });
 });
 
-// ── Anthropic API key management ────────────────────────────────────────
-
-const envFilePath = join(resolve(import.meta.dirname, '..', '..'), '.env');
-
-function writeEnvKey(key, value) {
-  let content = existsSync(envFilePath) ? readFileSync(envFilePath, 'utf8') : '';
-  const lines = content.split('\n');
-  const idx = lines.findIndex(l => l.trim().startsWith(key + '='));
-  if (idx !== -1) {
-    lines[idx] = `${key}=${value}`;
-  } else {
-    if (content && !content.endsWith('\n')) content += '\n';
-    lines.push(`${key}=${value}`);
-  }
-  writeFileSync(envFilePath, lines.join('\n'), 'utf8');
-}
-
-/**
- * GET /api/appstudio/anthropic-key — returns whether key is configured and where it came from (never the value)
- */
-router.get('/anthropic-key', requireAdmin, async (req, res) => {
-  const configured = !!process.env.ANTHROPIC_API_KEY;
-  if (!configured) return res.json({ configured: false, source: null });
-  const inFile = existsSync(envFilePath) &&
-    readFileSync(envFilePath, 'utf8').split('\n').some(l => l.trim().startsWith('ANTHROPIC_API_KEY='));
-  // If ?test=1, make a minimal real API call to verify the key works
-  if (req.query.test === '1') {
-    try {
-      const { default: Anthropic } = await import('@anthropic-ai/sdk');
-      const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-      await client.messages.create({ model: 'claude-haiku-4-5-20251001', max_tokens: 1, messages: [{ role: 'user', content: 'hi' }] });
-      return res.json({ configured: true, source: inFile ? 'file' : 'env', suffix: process.env.ANTHROPIC_API_KEY.slice(-4), valid: true });
-    } catch (err) {
-      return res.json({ configured: true, source: inFile ? 'file' : 'env', suffix: process.env.ANTHROPIC_API_KEY.slice(-4), valid: false, error: err.message });
-    }
-  }
-  const suffix = process.env.ANTHROPIC_API_KEY.slice(-4);
-  res.json({ configured: true, source: inFile ? 'file' : 'env', suffix });
-});
-
-/**
- * PUT /api/appstudio/anthropic-key — save key to .env and activate immediately
- */
-router.put('/anthropic-key', requireAdmin, auditMiddleware('appstudio.set-anthropic-key'), async (req, res) => {
-  const { key } = req.body || {};
-  if (!key || typeof key !== 'string' || !key.trim()) {
-    throw new AppError('key is required', 400, 'VALIDATION');
-  }
-  const trimmed = key.trim();
-  writeEnvKey('ANTHROPIC_API_KEY', trimmed);
-  process.env.ANTHROPIC_API_KEY = trimmed;
-
-  // Start the worker if it wasn't already running
-  try {
-    const { startWorker } = await import('../services/appstudio/worker.js');
-    startWorker();
-  } catch (_) {}
-
-  log.info('Anthropic API key updated via settings');
-  res.json({ message: 'Anthropic API key saved and applied' });
-});
 
 /**
  * POST /api/appstudio/chat - Conversational pre-planning with AI (Feature 17)

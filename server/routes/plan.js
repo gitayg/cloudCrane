@@ -6,6 +6,15 @@ import log from '../utils/logger.js';
 
 const router = Router();
 
+function isAppAdmin(userId, appSlug) {
+  if (!userId || !appSlug) return false;
+  const db = getDb();
+  const app = db.prepare('SELECT id FROM apps WHERE slug = ?').get(appSlug);
+  if (!app) return false;
+  const row = db.prepare('SELECT app_role FROM app_user_roles WHERE app_id = ? AND user_id = ?').get(app.id, userId);
+  return row?.app_role === 'admin';
+}
+
 function resolveUser(req) {
   const authHeader = req.headers.authorization || '';
   const token = (authHeader.replace(/^Bearer\s+/i, '').trim()) || (req.query.token || '');
@@ -215,7 +224,7 @@ router.post('/:enhancementId/build', (req, res) => {
 
   const db = getDb();
 
-  if (user.role === 'admin') {
+  if (user.role === 'admin' || isAppAdmin(user.userId, enh.app_slug)) {
     db.prepare("UPDATE enhancement_requests SET status = 'plan_approved' WHERE id = ?").run(id);
     const { lastInsertRowid } = db.prepare('INSERT INTO enhancement_jobs (enhancement_id, phase) VALUES (?, ?)').run(id, 'code');
     res.json({ message: 'Build queued', auto: true, job_id: Number(lastInsertRowid) });
