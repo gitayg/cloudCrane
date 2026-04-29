@@ -8,7 +8,7 @@ const router = Router();
 
 function resolveUser(req) {
   const authHeader = req.headers.authorization || '';
-  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  const token = (authHeader.replace(/^Bearer\s+/i, '').trim()) || (req.query.token || '');
   if (token) {
     const db = getDb();
     const session = db.prepare(`

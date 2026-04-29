@@ -1773,7 +1773,7 @@ function _streamPlan() {
   return new Promise(function(resolve, reject) {
     var workEl = document.getElementById('planWorking');
     var workTxt = document.getElementById('planWorkingText');
-    var es = new EventSource(API + '/api/plan/' + _planEnhId + '/stream');
+    var es = new EventSource(API + '/api/plan/' + _planEnhId + '/stream?token=' + encodeURIComponent(sessionToken));
     var esErrCount = 0;
     var streamMsgDiv = null;
     var streamContentDiv = null;
