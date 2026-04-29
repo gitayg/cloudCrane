@@ -65,6 +65,13 @@
 .trace-timing{font-size:.72rem;color:var(--dim);font-family:monospace;margin-left:auto}
 .trace-err{font-size:.72rem;color:var(--red);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .trace-body{background:var(--bg);padding:10px 14px;font-family:'SF Mono',Monaco,monospace;font-size:.73rem;color:var(--dim);white-space:pre-wrap;word-break:break-word;line-height:1.6;max-height:500px;overflow-y:auto;border-top:1px solid var(--border)}
+.trace-time-row{display:flex;align-items:center;gap:6px;padding:5px 14px;background:var(--surface2);border-top:1px solid var(--border);font-size:.7rem;color:var(--dim);font-family:monospace;flex-wrap:wrap}
+.ttr-seg{display:flex;align-items:center;gap:4px}
+.ttr-label{color:var(--dim);opacity:.7;font-size:.65rem;text-transform:uppercase;letter-spacing:.3px}
+.ttr-val{color:var(--text)}
+.ttr-dur{color:var(--accent);font-weight:600}
+.ttr-arrow{opacity:.4;font-size:.65rem}
+.ttr-wait{color:var(--yellow)}
 .trace-ai-log{padding:10px 14px;font-size:.78rem;color:var(--dim);background:var(--surface);white-space:pre-wrap;border-top:1px solid var(--border);line-height:1.5}
 .ti-queued{color:var(--dim)}.ti-running{color:var(--accent)}.ti-done{color:var(--green)}.ti-failed{color:var(--red)}
 
@@ -148,6 +155,27 @@ function fmtDate(str) {
   if (!str) return '';
   var d = new Date(str.replace(' ', 'T') + (str.includes('T') ? '' : 'Z'));
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function fmtJobTime(str) {
+  if (!str) return null;
+  var d = new Date(str.replace(' ', 'T') + (str.includes('T') ? '' : 'Z'));
+  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function fmtMs(ms) {
+  if (ms == null || ms < 0) return null;
+  if (ms < 1000) return '<1s';
+  if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
+  var m = Math.floor(ms / 60000), s = Math.floor((ms % 60000) / 1000);
+  return m + 'm ' + s + 's';
+}
+
+function msGap(a, b) {
+  if (!a || !b) return null;
+  var ta = new Date(a.replace(' ', 'T') + (a.includes('T') ? '' : 'Z')).getTime();
+  var tb = new Date(b.replace(' ', 'T') + (b.includes('T') ? '' : 'Z')).getTime();
+  return tb - ta;
 }
 
 async function delRequest(id) {
@@ -339,8 +367,14 @@ async function showDetail(id) {
       st.textContent = j.status === 'done' ? '✓' : j.status === 'failed' ? '✗' : j.status === 'running' ? '▶' : '·';
       st.style.cssText = 'font-size:.85rem;font-weight:700;width:14px;flex-shrink:0';
       var timing = document.createElement('span'); timing.className = 'trace-timing';
-      if (j.duration_ms != null) timing.textContent = (j.duration_ms / 1000).toFixed(1) + 's';
-      else if (j.started_at) timing.textContent = (j.started_at || '').slice(0,19);
+      if (j.duration_ms != null) {
+        timing.textContent = (j.started_at ? fmtJobTime(j.started_at) + ' · ' : '') + fmtMs(j.duration_ms);
+      } else if (j.started_at) {
+        var elapsedMs = Date.now() - new Date(j.started_at.replace(' ','T')+'Z').getTime();
+        timing.textContent = fmtJobTime(j.started_at) + ' · ' + fmtMs(elapsedMs) + ' elapsed';
+      } else if (j.created_at) {
+        timing.textContent = 'queued ' + fmtJobTime(j.created_at);
+      }
       if (j.error) {
         var err = document.createElement('span'); err.className = 'trace-err'; err.textContent = j.error; bh.appendChild(jtag); bh.appendChild(ph); bh.appendChild(st); bh.appendChild(err); bh.appendChild(timing);
       } else { bh.appendChild(jtag); bh.appendChild(ph); bh.appendChild(st); bh.appendChild(timing); }
@@ -374,6 +408,44 @@ async function showDetail(id) {
         bh.appendChild(delBtn);
       }
       block.appendChild(bh);
+
+      // Time info row
+      var ttr = document.createElement('div'); ttr.className = 'trace-time-row';
+      function ttrSeg(label, val, cls) {
+        var seg = document.createElement('span'); seg.className = 'ttr-seg';
+        var l = document.createElement('span'); l.className = 'ttr-label'; l.textContent = label;
+        var v = document.createElement('span'); v.className = cls || 'ttr-val'; v.textContent = val;
+        seg.appendChild(l); seg.appendChild(v); return seg;
+      }
+      if (j.created_at) ttr.appendChild(ttrSeg('queued', fmtJobTime(j.created_at)));
+      if (j.started_at) {
+        var arr1 = document.createElement('span'); arr1.className = 'ttr-arrow'; arr1.textContent = '→';
+        ttr.appendChild(arr1);
+        ttr.appendChild(ttrSeg('started', fmtJobTime(j.started_at)));
+        var waitMs = msGap(j.created_at, j.started_at);
+        if (waitMs != null && waitMs > 1000) {
+          var wspan = document.createElement('span'); wspan.className = 'ttr-wait'; wspan.textContent = '(+' + fmtMs(waitMs) + ' wait)';
+          ttr.appendChild(wspan);
+        }
+      }
+      if (j.finished_at) {
+        var arr2 = document.createElement('span'); arr2.className = 'ttr-arrow'; arr2.textContent = '→';
+        ttr.appendChild(arr2);
+        ttr.appendChild(ttrSeg('done', fmtJobTime(j.finished_at)));
+        var durMs = j.duration_ms != null ? j.duration_ms : msGap(j.started_at, j.finished_at);
+        if (durMs != null) {
+          var dspan = document.createElement('span'); dspan.className = 'ttr-dur'; dspan.textContent = fmtMs(durMs);
+          ttr.appendChild(dspan);
+        }
+      } else if (j.started_at && j.status === 'running') {
+        var arr3 = document.createElement('span'); arr3.className = 'ttr-arrow'; arr3.textContent = '→';
+        ttr.appendChild(arr3);
+        var runEl = document.createElement('span'); runEl.className = 'ttr-dur';
+        var runMs = Date.now() - new Date(j.started_at.replace(' ','T')+'Z').getTime();
+        runEl.textContent = fmtMs(runMs) + ' running';
+        ttr.appendChild(runEl);
+      }
+      block.appendChild(ttr);
 
       var body = document.createElement('pre'); body.className = 'trace-body'; body.id = 'trace-body-' + j.id;
       var bodyLines = [];
