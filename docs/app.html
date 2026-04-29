@@ -42,6 +42,38 @@ th{color:var(--dim);font-weight:500}
 .msg{padding:8px 12px;border-radius:6px;margin-bottom:12px;font-size:.85rem}
 .msg-ok{background:#22c55e18;border:1px solid #22c55e44;color:var(--green)}
 .msg-err{background:#ef444418;border:1px solid #ef444444;color:var(--red)}
+/* Deploy Timeline */
+.timeline{margin-top:0}
+.tl-item{display:flex}
+.tl-rail{display:flex;flex-direction:column;align-items:center;width:24px;flex-shrink:0;padding-top:3px}
+.tl-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.tl-dot-green{background:var(--green)}.tl-dot-red{background:var(--red)}.tl-dot-yellow{background:var(--yellow)}.tl-dot-gray{background:var(--dim)}
+.tl-line{width:2px;flex:1;background:var(--border);margin:4px 0;min-height:14px}
+.tl-body{flex:1;padding:0 0 14px 10px;min-width:0}
+.tl-hdr{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:3px 7px;border-radius:6px}
+.tl-hdr:hover{background:#ffffff08}
+.tl-ver{font-weight:700;font-size:.85rem}
+.tl-hash{font-family:'SF Mono',Monaco,monospace;font-size:.75rem;color:var(--dim)}
+.tl-by{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.58rem;font-weight:700;flex-shrink:0;color:#fff}
+.tl-dur{font-size:.72rem;color:var(--dim);background:#ffffff09;border:1px solid var(--border);border-radius:4px;padding:1px 5px}
+.tl-time{font-size:.72rem;color:var(--dim);margin-left:auto}
+.tl-log-btn{font-size:.72rem;padding:2px 7px;background:none;border:1px solid var(--border);color:var(--dim);border-radius:4px;cursor:pointer;font-family:inherit}
+.tl-log-btn:hover{border-color:var(--accent);color:var(--accent)}
+/* Log Drawer */
+#logDrawer{position:fixed;bottom:0;left:0;right:0;height:42vh;background:var(--surface);border-top:2px solid var(--border);display:flex;flex-direction:column;z-index:50;transform:translateY(100%);transition:transform .22s ease}
+#logDrawer.open{transform:translateY(0)}
+.log-drawer-hdr{display:flex;align-items:center;gap:6px;padding:7px 14px;border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap}
+.log-tab{background:none;border:none;color:var(--dim);font-size:.8rem;cursor:pointer;padding:3px 10px;border-radius:4px;font-family:inherit}
+.log-tab.active{background:var(--surface2);color:var(--text)}
+.log-filter-input{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:4px 10px;border-radius:4px;font-size:.78rem;width:150px;font-family:inherit;outline:none}
+.log-filter-input::placeholder{color:var(--dim)}
+.log-lvl-btn{background:none;border:1px solid var(--border);color:var(--dim);font-size:.7rem;padding:2px 7px;border-radius:4px;cursor:pointer;font-family:inherit}
+.log-lvl-btn.lvl-on-err{border-color:var(--red);color:var(--red);background:#ef444414}
+.log-lvl-btn.lvl-on-warn{border-color:var(--yellow);color:var(--yellow);background:#eab30814}
+.log-lvl-btn.lvl-on-info{border-color:var(--accent);color:var(--accent);background:#3b82f614}
+.log-close{margin-left:auto;background:none;border:none;color:var(--dim);cursor:pointer;font-size:1.1rem;line-height:1;padding:0 4px}
+#logContent{flex:1;overflow-y:auto;padding:10px 16px;font-family:'SF Mono',Monaco,monospace;font-size:.73rem;line-height:1.6;white-space:pre-wrap;word-break:break-all}
+.log-err{color:var(--red)}.log-warn{color:var(--yellow)}.log-info{color:var(--accent)}.log-dim-line{display:none!important}
 </style>
 </head>
 <body>
@@ -114,7 +146,10 @@ th{color:var(--dim);font-weight:500}
   </div>
 
   <!-- Deploy history -->
-  <h2>Deploy History</h2>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin:24px 0 12px">
+    <span style="font-size:1rem;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;font-weight:500">Deploy History</span>
+    <button class="btn btn-sm btn-dim" onclick="openLogDrawer('runtime')" style="font-size:.78rem">Live Logs</button>
+  </div>
   <div class="card">
     <div id="deployHistory">Loading...</div>
   </div>
@@ -361,28 +396,86 @@ async function loadApp() {
     evEl.appendChild(span);
   }
 
-  // Deploy history
+  // Deploy history — visual timeline
   try {
     const d = await apiFetch('/api/apps/' + currentApp + '/deployments/' + currentEnv);
     const histEl = document.getElementById('deployHistory');
     histEl.textContent = '';
     if (d.deployments?.length) {
-      const tbl = document.createElement('table');
-      const hdr = tbl.insertRow();
-      ['Version','Status','By','When'].forEach(h => { const th = document.createElement('th'); th.textContent = h; hdr.appendChild(th); });
-      d.deployments.forEach(dep => {
-        const depBadgeCls = dep.status === 'live' ? 'badge-live' : dep.status === 'failed' ? 'badge-failed' : 'badge-building';
-        const tr = tbl.insertRow();
-        tr.insertCell().textContent = dep.version || '-';
-        const tdS = tr.insertCell();
-        const sp = document.createElement('span');
-        sp.className = 'badge ' + depBadgeCls;
-        sp.textContent = dep.status;
-        tdS.appendChild(sp);
-        tr.insertCell().textContent = dep.deployed_by_name || '-';
-        tr.insertCell().textContent = dep.finished_at || dep.started_at;
+      const tl = document.createElement('div');
+      tl.className = 'timeline';
+      d.deployments.forEach((dep, i) => {
+        const dotCls = dep.status === 'live' ? 'tl-dot-green' : dep.status === 'failed' ? 'tl-dot-red' : 'tl-dot-yellow';
+        const badgeCls = dep.status === 'live' ? 'badge-live' : dep.status === 'failed' ? 'badge-failed' : 'badge-building';
+        const dur = fmtDur(dep.started_at, dep.finished_at);
+        const rt = relTime(dep.finished_at || dep.started_at);
+        const item = document.createElement('div');
+        item.className = 'tl-item';
+        // Rail
+        const rail = document.createElement('div');
+        rail.className = 'tl-rail';
+        const dot = document.createElement('div');
+        dot.className = 'tl-dot ' + dotCls;
+        rail.appendChild(dot);
+        if (i < d.deployments.length - 1) {
+          const ln = document.createElement('div');
+          ln.className = 'tl-line';
+          rail.appendChild(ln);
+        }
+        // Body
+        const body = document.createElement('div');
+        body.className = 'tl-body';
+        const hdr = document.createElement('div');
+        hdr.className = 'tl-hdr';
+        const ver = document.createElement('span');
+        ver.className = 'tl-ver';
+        ver.textContent = 'v' + (dep.version || '-');
+        hdr.appendChild(ver);
+        const badge = document.createElement('span');
+        badge.className = 'badge ' + badgeCls;
+        badge.textContent = dep.status;
+        hdr.appendChild(badge);
+        if (dep.commit_hash) {
+          const hash = document.createElement('span');
+          hash.className = 'tl-hash';
+          hash.textContent = dep.commit_hash.slice(0,7);
+          hdr.appendChild(hash);
+        }
+        if (dep.deployed_by_name) {
+          const av = document.createElement('div');
+          av.className = 'tl-by';
+          av.style.background = avatarColor(dep.deployed_by_name);
+          av.title = dep.deployed_by_name;
+          av.textContent = initials(dep.deployed_by_name);
+          hdr.appendChild(av);
+        }
+        if (dur) {
+          const de = document.createElement('span');
+          de.className = 'tl-dur';
+          de.textContent = dur;
+          hdr.appendChild(de);
+        }
+        const te = document.createElement('span');
+        te.className = 'tl-time';
+        te.title = dep.finished_at || dep.started_at || '';
+        te.textContent = rt;
+        hdr.appendChild(te);
+        const lb = document.createElement('button');
+        lb.className = 'tl-log-btn';
+        lb.textContent = 'Logs \u25b8';
+        lb.dataset.id = dep.id;
+        lb.addEventListener('click', function(e) {
+          e.stopPropagation();
+          _logDeployId = this.dataset.id;
+          openLogDrawer('build', this.dataset.id);
+        });
+        hdr.appendChild(lb);
+        body.appendChild(hdr);
+        item.appendChild(rail);
+        item.appendChild(body);
+        tl.appendChild(item);
       });
-      histEl.appendChild(tbl);
+      histEl.appendChild(tl);
     } else {
       const span = document.createElement('span');
       span.style.color = 'var(--dim)';
@@ -477,8 +570,138 @@ async function renameSlug() {
   setTimeout(loadApp, 3000);
 }
 
+// ── Deploy Timeline helpers ───────────────────────────────────
+function fmtDur(s, f) {
+  if (!s || !f) return '';
+  var sec = Math.round((new Date(f) - new Date(s)) / 1000);
+  if (sec < 60) return sec + 's';
+  return Math.floor(sec/60) + 'm ' + (sec%60) + 's';
+}
+function relTime(iso) {
+  if (!iso) return '';
+  var diff = Date.now() - new Date(iso).getTime();
+  var s = Math.floor(diff/1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.floor(s/60) + 'm ago';
+  if (s < 86400) return Math.floor(s/3600) + 'h ago';
+  return Math.floor(s/86400) + 'd ago';
+}
+function initials(name) {
+  if (!name) return '?';
+  var p = name.trim().split(/\s+/);
+  return p.length === 1 ? p[0].slice(0,2).toUpperCase() : (p[0][0]+p[p.length-1][0]).toUpperCase();
+}
+var _aColors = ['#3b82f6','#8b5cf6','#ec4899','#f97316','#22c55e','#eab308'];
+function avatarColor(name) {
+  var h = 0;
+  for (var i=0;i<(name||'').length;i++) h=(h*31+(name||'').charCodeAt(i))&0xffffffff;
+  return _aColors[Math.abs(h)%_aColors.length];
+}
+
+// ── Log Drawer ───────────────────────────────────────────────
+var _logTab = 'runtime', _logPoller = null, _logDeployId = null;
+var _activeLevels = new Set();
+
+function openLogDrawer(tab, deployId) {
+  document.getElementById('logDrawer').classList.add('open');
+  document.querySelector('.container').style.paddingBottom = '44vh';
+  if (deployId) _logDeployId = deployId;
+  setLogTab(tab || _logTab);
+}
+function closeLogDrawer() {
+  document.getElementById('logDrawer').classList.remove('open');
+  document.querySelector('.container').style.paddingBottom = '';
+  clearInterval(_logPoller); _logPoller = null;
+}
+function setLogTab(tab) {
+  _logTab = tab;
+  document.getElementById('tabRuntime').className = 'log-tab' + (tab==='runtime'?' active':'');
+  document.getElementById('tabBuild').className = 'log-tab' + (tab==='build'?' active':'');
+  clearInterval(_logPoller); _logPoller = null;
+  document.getElementById('logContent').textContent = 'Loading\u2026';
+  if (tab === 'runtime') {
+    fetchRuntimeLogs();
+    _logPoller = setInterval(fetchRuntimeLogs, 4000);
+  } else if (tab === 'build' && _logDeployId) {
+    fetchBuildLog(_logDeployId);
+  } else {
+    document.getElementById('logContent').innerHTML = '<span style="color:var(--dim)">Click \u201cLogs \u25b8\u201d on a deploy to view its build log.</span>';
+  }
+}
+async function fetchRuntimeLogs() {
+  try {
+    var d = await apiFetch('/api/apps/' + currentApp + '/logs/' + currentEnv);
+    renderLog(d.logs || []);
+  } catch(e) {
+    document.getElementById('logContent').innerHTML = '<span style="color:var(--red)">Error loading logs</span>';
+  }
+}
+async function fetchBuildLog(id) {
+  try {
+    var d = await apiFetch('/api/apps/' + currentApp + '/deployments/' + currentEnv + '/' + id + '/log');
+    renderLog((d.log || '').split('\n'));
+  } catch(e) {
+    document.getElementById('logContent').innerHTML = '<span style="color:var(--red)">Error loading log</span>';
+  }
+}
+function renderLog(lines) {
+  var c = document.getElementById('logContent');
+  var kw = (document.getElementById('logFilter').value||'').toLowerCase();
+  var anyLvl = _activeLevels.size > 0;
+  c.textContent = '';
+  lines.forEach(function(line) {
+    var lower = (line||'').toLowerCase();
+    var isErr = /error|exception|fatal|critical/i.test(line);
+    var isWrn = /\bwarn/i.test(line);
+    var isInf = /\binfo\b|started|listening|ready/i.test(line);
+    var lvl = isErr?'error':isWrn?'warn':isInf?'info':'';
+    var div = document.createElement('div');
+    div.textContent = line;
+    if (isErr) div.classList.add('log-err');
+    else if (isWrn) div.classList.add('log-warn');
+    else if (isInf) div.classList.add('log-info');
+    var hide = (kw && !lower.includes(kw)) || (anyLvl && lvl && !_activeLevels.has(lvl));
+    if (hide) div.classList.add('log-dim-line');
+    c.appendChild(div);
+  });
+  c.scrollTop = c.scrollHeight;
+}
+function applyLogFilter() {
+  var kw = (document.getElementById('logFilter').value||'').toLowerCase();
+  var anyLvl = _activeLevels.size > 0;
+  document.getElementById('logContent').querySelectorAll('div').forEach(function(div) {
+    var lower = div.textContent.toLowerCase();
+    var lvl = div.classList.contains('log-err')?'error':div.classList.contains('log-warn')?'warn':div.classList.contains('log-info')?'info':'';
+    var hide = (kw && !lower.includes(kw)) || (anyLvl && lvl && !_activeLevels.has(lvl));
+    div.classList.toggle('log-dim-line', hide);
+  });
+}
+function toggleLevel(level) {
+  if (_activeLevels.has(level)) _activeLevels.delete(level);
+  else _activeLevels.add(level);
+  var map = {error:['lvlErr','lvl-on-err'],warn:['lvlWarn','lvl-on-warn'],info:['lvlInfo','lvl-on-info']};
+  var m = map[level];
+  document.getElementById(m[0]).classList.toggle(m[1], _activeLevels.has(level));
+  applyLogFilter();
+}
+
 // Init
 if (KEY) { init(); } else { document.getElementById('loginPanel').classList.remove('hidden'); }
 </script>
+
+<div id="logDrawer">
+  <div class="log-drawer-hdr">
+    <div style="display:flex;gap:2px;margin-right:6px">
+      <button class="log-tab active" id="tabRuntime" onclick="setLogTab('runtime')">Runtime Logs</button>
+      <button class="log-tab" id="tabBuild" onclick="setLogTab('build')">Build Log</button>
+    </div>
+    <input class="log-filter-input" id="logFilter" placeholder="Filter\u2026" oninput="applyLogFilter()">
+    <button class="log-lvl-btn" id="lvlErr" onclick="toggleLevel('error')" title="Show only errors">Error</button>
+    <button class="log-lvl-btn" id="lvlWarn" onclick="toggleLevel('warn')" title="Show only warnings">Warn</button>
+    <button class="log-lvl-btn" id="lvlInfo" onclick="toggleLevel('info')" title="Show only info">Info</button>
+    <button class="log-close" onclick="closeLogDrawer()" title="Close">&times;</button>
+  </div>
+  <div id="logContent"><span style="color:var(--dim)">Click "Logs &#9656;" on a deploy to view its build log, or switch to Runtime Logs.</span></div>
+</div>
 </body>
 </html>
