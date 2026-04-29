@@ -18,6 +18,7 @@ Read this first; it supersedes parts of the reports below.
 | 2026-04-26 | [healthcheck-prefix-diagnostic](2026-04-26-appcrane-healthcheck-prefix-diagnostic.md) | Lower priority post-fix | Health-check diagnoses prefix misconfig |
 | 2026-04-26 | [boot-route-inspection](2026-04-26-appcrane-boot-route-inspection.md) | Lower priority post-fix | Proactive boot-time route inspection |
 | 2026-04-26 | [enhancements-silent-skip](2026-04-26-appcrane-enhancements-silent-skip.md) | **Implemented v1.17.1** | Enhancement enqueue silently skips when ANTHROPIC_API_KEY missing |
+| 2026-04-29 | [appstudio-npm-ci-build-failure-mytalent](2026-04-29-appstudio-npm-ci-build-failure-mytalent.md) | Open | AppStudio build fails: package.json edited without regenerating package-lock.json |
 
 ## Theme
 

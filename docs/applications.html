@@ -116,6 +116,7 @@ function buildAppCard(a) {
   const cpu = rl.max_cpu_percent || 50;
   const ramLabel = ram >= 1024 ? (ram / 1024).toFixed(ram % 1024 === 0 ? 0 : 1) + ' GB' : ram + ' MB';
   const vis = a.visibility || (a.public_access ? 'public' : 'private');
+  const retention = a.image_retention ?? 0;
 
   function el(tag, attrs, text) {
     const e = document.createElement(tag);
@@ -203,6 +204,7 @@ function buildAppCard(a) {
   if (isAdmin()) {
     actions.appendChild(btn('tag', 'btn-xs', function() { setCategory(sl, a.category || ''); }, 'Set category'));
     actions.appendChild(btn('⚙ limits', 'btn-xs', function() { editResources(sl, ram, cpu); }, 'Edit resource limits'));
+    actions.appendChild(btn('🗂 images', 'btn-xs', (function(s, r) { return function() { editRetention(s, r); }; })(sl, retention), 'Image retention (# of old images to keep per env)'));
   }
   actions.appendChild(btn('delete', 'btn-xs btn-red', function() { deleteApp(sl, nm); }));
   hdr.appendChild(actions);
@@ -528,6 +530,18 @@ async function editResources(slug, currentRam, currentCpu) {
   const data = await apiPut('/api/apps/' + slug, { max_ram_mb: ram, max_cpu_percent: cpu });
   if (data.error) { alert('Failed: ' + data.error.message); return; }
   alert('Resource limits updated. Takes effect on next deploy.');
+  loadApps();
+}
+
+async function editRetention(slug, current) {
+  if (!isAdmin()) { alert('Admin only'); return; }
+  const val = prompt('Image history to keep per environment (0 = only the live image, max 50):\n0 means old images are pruned immediately after each deploy.', String(current));
+  if (val === null) return;
+  const n = parseInt(val, 10);
+  if (!Number.isFinite(n) || n < 0 || n > 50) { alert('Must be an integer 0–50'); return; }
+  const data = await apiPut('/api/apps/' + slug, { image_retention: n });
+  if (data.error) { alert('Failed: ' + data.error.message); return; }
+  alert('Image retention updated to ' + n + '. Takes effect on next deploy.');
   loadApps();
 }
 

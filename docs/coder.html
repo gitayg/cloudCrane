@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Coder — AppCrane</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#0f1117;color:#e4e4e7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;font-size:14px}
+#app{display:flex;flex-direction:column;height:100vh}
+
+/* Header */
+#header{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid #2a2d3a;background:#13161f;flex-shrink:0}
+#app-info{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
+#back-btn{color:#71717a;text-decoration:none;font-size:18px;line-height:1;padding:4px;border-radius:4px}
+#back-btn:hover{color:#e4e4e7;background:#1e2130}
+#app-name{font-weight:600;font-size:15px;color:#e4e4e7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.branch-tag{background:#1e3a5f;color:#60a5fa;border-radius:4px;padding:2px 8px;font-size:11px;font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px}
+.status-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.status-dot.idle{background:#22c55e}
+.status-dot.active{background:#f59e0b;animation:pulse 1.2s infinite}
+.status-dot.starting{background:#3b82f6;animation:pulse 1.2s infinite}
+.status-dot.paused{background:#6b7280}
+.status-dot.error{background:#ef4444}
+.status-dot.shipped{background:#a855f7}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+#header-actions{display:flex;gap:8px;flex-shrink:0}
+
+/* Buttons */
+.btn{border:none;border-radius:6px;padding:6px 14px;font-size:13px;font-weight:500;cursor:pointer;transition:background .15s}
+.btn:disabled{opacity:.4;cursor:default}
+.btn-primary{background:#3b82f6;color:#fff}
+.btn-primary:not(:disabled):hover{background:#2563eb}
+.btn-success{background:#16a34a;color:#fff}
+.btn-success:not(:disabled):hover{background:#15803d}
+.btn-danger{background:#dc2626;color:#fff}
+.btn-danger:not(:disabled):hover{background:#b91c1c}
+.btn-ghost{background:transparent;color:#a1a1aa;border:1px solid #2a2d3a}
+.btn-ghost:not(:disabled):hover{border-color:#3b82f6;color:#e4e4e7}
+
+/* Messages */
+#messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+.msg{max-width:82%;word-break:break-word}
+.msg.user{align-self:flex-end}
+.msg.assistant{align-self:flex-start;max-width:90%}
+.msg.system-ev{align-self:flex-start;max-width:96%;opacity:.75}
+.bubble{padding:10px 14px;border-radius:10px;line-height:1.6;white-space:pre-wrap}
+.msg.user .bubble{background:#1e3a5f;color:#e4e4e7;border-bottom-right-radius:3px}
+.msg.assistant .bubble{background:#1a1d27;border:1px solid #2a2d3a;color:#e4e4e7;border-bottom-left-radius:3px}
+.msg.system-ev .bubble{background:#111318;border:1px dashed #2a2d3a;font-size:12px;font-family:monospace;color:#6b7280}
+.msg-label{font-size:11px;color:#52525b;margin-bottom:3px;padding:0 2px}
+.stream-cursor::after{content:'▋';color:#3b82f6;animation:blink .8s step-end infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* Tool event */
+.tool-badge{display:inline-flex;align-items:center;gap:5px;background:#1e2130;border:1px solid #2a2d3a;border-radius:4px;padding:3px 8px;font-size:11px;font-family:monospace;color:#a1a1aa;margin-top:4px}
+.tool-badge span{color:#60a5fa}
+
+/* Input area */
+#input-area{border-top:1px solid #2a2d3a;padding:12px 16px;display:flex;gap:10px;align-items:flex-end;flex-shrink:0;background:#13161f}
+#prompt{flex:1;background:#1a1d27;border:1px solid #2a2d3a;border-radius:8px;color:#e4e4e7;padding:10px 12px;font-size:14px;resize:none;font-family:inherit;min-height:44px;max-height:160px;outline:none;line-height:1.5}
+#prompt:focus{border-color:#3b82f6}
+#prompt::placeholder{color:#52525b}
+#send-btn{height:44px;padding:0 18px}
+
+/* Start panel */
+#start-panel{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:32px}
+#start-panel h2{color:#e4e4e7;font-size:1.1rem}
+#start-panel p{color:#71717a;text-align:center;max-width:420px;line-height:1.6}
+#start-log{font-family:monospace;font-size:12px;color:#6b7280;max-height:200px;overflow-y:auto;background:#111318;border:1px solid #1e2130;border-radius:6px;padding:10px;width:100%;max-width:480px;white-space:pre-wrap;display:none}
+
+/* Cost badge */
+#cost-area{padding:4px 16px;font-size:11px;color:#52525b;border-top:1px solid #1e2130;background:#0f1117;flex-shrink:0}
+
+/* Error banner */
+#error-banner{background:#450a0a;border:1px solid #7f1d1d;color:#fca5a5;padding:10px 16px;font-size:13px;display:none}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#2a2d3a;border-radius:3px}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="header">
+    <a id="back-btn" href="/portal" title="Back to portal">&#8592;</a>
+    <div id="app-info">
+      <span id="app-name">Loading…</span>
+      <span id="branch-tag" class="branch-tag" style="display:none"></span>
+      <span id="status-dot" class="status-dot" style="display:none"></span>
+    </div>
+    <div id="header-actions">
+      <button id="stop-btn" class="btn btn-danger" style="display:none">Stop</button>
+      <button id="ship-btn" class="btn btn-success" style="display:none">Ship to Sandbox</button>
+    </div>
+  </div>
+
+  <div id="error-banner"></div>
+
+  <!-- Start session panel (shown when no active session) -->
+  <div id="start-panel">
+    <h2>AppCrane Coder</h2>
+    <p>Start an interactive coding session. Claude Code will clone the app's repo onto a new branch and make changes as you describe them.</p>
+    <button id="start-btn" class="btn btn-primary">Start Coder Session</button>
+    <button id="resume-btn" class="btn btn-ghost" style="display:none">Resume Paused Session</button>
+    <div id="start-log"></div>
+  </div>
+
+  <!-- Chat (hidden until session is active) -->
+  <div id="messages" style="display:none"></div>
+  <div id="cost-area" style="display:none">
+    <span id="cost-tokens">0</span> tokens &bull; $<span id="cost-usd">0.00</span>
+  </div>
+  <div id="input-area" style="display:none">
+    <textarea id="prompt" rows="1" placeholder="Describe what you want to change…"></textarea>
+    <button id="send-btn" class="btn btn-primary">Send</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ── Auth helpers ────────────────────────────────────────────────────────────
+
+function getAuthHeaders() {
+  const bearer = localStorage.getItem('portal_token') || localStorage.getItem('identity_token');
+  const apiKey = localStorage.getItem('token');
+  if (bearer) return { 'Authorization': `Bearer ${bearer}` };
+  if (apiKey)  return { 'X-API-Key': apiKey };
+  return {};
+}
+
+async function apiFetch(path, opts = {}) {
+  const res = await fetch(path, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders(), ...(opts.headers || {}) },
+  });
+  const text = await res.text();
+  let json;
+  try { json = JSON.parse(text); } catch (_) { json = { error: { message: text } }; }
+  if (!res.ok) throw new Error(json?.error?.message || `HTTP ${res.status}`);
+  return json;
+}
+
+// ── State ───────────────────────────────────────────────────────────────────
+
+const slug    = new URLSearchParams(location.search).get('slug') || '';
+let sessionId = null;
+let sessionStatus = null;
+let costTokens = 0;
+let costCents  = 0;
+let eventSource = null;
+let streamEl   = null; // current streaming bubble
+
+// ── DOM refs ────────────────────────────────────────────────────────────────
+
+const $appName   = document.getElementById('app-name');
+const $branchTag = document.getElementById('branch-tag');
+const $statusDot = document.getElementById('status-dot');
+const $startPanel = document.getElementById('start-panel');
+const $startBtn  = document.getElementById('start-btn');
+const $resumeBtn = document.getElementById('resume-btn');
+const $startLog  = document.getElementById('start-log');
+const $messages  = document.getElementById('messages');
+const $inputArea = document.getElementById('input-area');
+const $costArea  = document.getElementById('cost-area');
+const $prompt    = document.getElementById('prompt');
+const $sendBtn   = document.getElementById('send-btn');
+const $stopBtn   = document.getElementById('stop-btn');
+const $shipBtn   = document.getElementById('ship-btn');
+const $errBanner = document.getElementById('error-banner');
+
+// ── Error display ───────────────────────────────────────────────────────────
+
+function showError(msg) {
+  $errBanner.textContent = msg;
+  $errBanner.style.display = 'block';
+  setTimeout(() => { $errBanner.style.display = 'none'; }, 8000);
+}
+
+// ── Status & UI helpers ─────────────────────────────────────────────────────
+
+function setStatus(status) {
+  sessionStatus = status;
+  $statusDot.className = `status-dot ${status}`;
+  $statusDot.style.display = 'inline-block';
+  const isIdle = status === 'idle';
+  const isActive = status === 'active';
+  $sendBtn.disabled = !isIdle;
+  $stopBtn.style.display = isActive ? '' : 'none';
+  $shipBtn.style.display = ['idle', 'paused'].includes(status) ? '' : 'none';
+  $prompt.disabled = !isIdle;
+}
+
+function showChat() {
+  $startPanel.style.display = 'none';
+  $messages.style.display   = 'flex';
+  $inputArea.style.display  = 'flex';
+  $costArea.style.display   = 'block';
+  $branchTag.style.display  = '';
+}
+
+function updateCost() {
+  document.getElementById('cost-tokens').textContent = costTokens.toLocaleString();
+  document.getElementById('cost-usd').textContent = (costCents / 100).toFixed(4);
+}
+
+function scrollBottom() {
+  $messages.scrollTop = $messages.scrollHeight;
+}
+
+// ── Message rendering ────────────────────────────────────────────────────────
+
+function appendMessage(role, content) {
+  // filter out system event rows
+  if (role !== 'user' && role !== 'assistant') return;
+  const wrap = document.createElement('div');
+  wrap.className = `msg ${role}`;
+  const label = document.createElement('div');
+  label.className = 'msg-label';
+  label.textContent = role === 'user' ? 'You' : 'Claude';
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = content;
+  wrap.appendChild(label);
+  wrap.appendChild(bubble);
+  $messages.appendChild(wrap);
+  scrollBottom();
+  return wrap;
+}
+
+function appendToolBadge(name) {
+  const badge = document.createElement('div');
+  badge.className = 'tool-badge';
+  badge.innerHTML = `<span>&#128295;</span> ${escHtml(name)}`;
+  $messages.appendChild(badge);
+  scrollBottom();
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function startStream() {
+  if (streamEl) return streamEl;
+  const wrap = document.createElement('div');
+  wrap.className = 'msg assistant';
+  const label = document.createElement('div');
+  label.className = 'msg-label';
+  label.textContent = 'Claude';
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble stream-cursor';
+  wrap.appendChild(label);
+  wrap.appendChild(bubble);
+  $messages.appendChild(wrap);
+  streamEl = bubble;
+  scrollBottom();
+  return bubble;
+}
+
+function appendStream(text) {
+  const bubble = streamEl || startStream();
+  bubble.textContent += text;
+  scrollBottom();
+}
+
+function finalizeStream() {
+  if (streamEl) {
+    streamEl.classList.remove('stream-cursor');
+    streamEl = null;
+  }
+}
+
+// ── SSE connection ───────────────────────────────────────────────────────────
+
+let lastMsgId = 0;
+
+function connectSSE() {
+  if (eventSource) eventSource.close();
+
+  const authHeaders = getAuthHeaders();
+  const apiKey   = authHeaders['X-API-Key'] || '';
+  const bearer   = (authHeaders['Authorization'] || '').replace(/^Bearer\s+/i, '');
+  const params   = new URLSearchParams({ after: lastMsgId });
+  if (apiKey)  params.set('api_key', apiKey);
+  if (bearer)  params.set('token', bearer);
+
+  const url = `/api/coder/${encodeURIComponent(slug)}/session/${encodeURIComponent(sessionId)}/events?${params}`;
+  eventSource = new EventSource(url);
+
+  eventSource.onmessage = (e) => {
+    let ev;
+    try { ev = JSON.parse(e.data); } catch (_) { return; }
+    handleSSEEvent(ev);
+  };
+
+  eventSource.onerror = () => {
+    eventSource.close();
+    eventSource = null;
+    if (sessionStatus === 'active') {
+      setTimeout(connectSSE, 3000);
+    }
+  };
+}
+
+function handleSSEEvent(ev) {
+  switch (ev.type) {
+    case 'stream':
+      if (ev.event?.type === 'text') appendStream(ev.event.text);
+      if (ev.event?.type === 'tool') appendToolBadge(ev.event.name);
+      break;
+    case 'status':
+      finalizeStream();
+      setStatus(ev.status);
+      if (ev.status === 'idle') $prompt.focus();
+      break;
+    case 'cost':
+      costTokens += (ev.inputTokens || 0) + (ev.outputTokens || 0);
+      costCents  += ev.costUsdCents || 0;
+      updateCost();
+      break;
+    case 'error':
+      showError(ev.message || 'An error occurred');
+      finalizeStream();
+      break;
+  }
+}
+
+// ── SSE with API key fallback (EventSource doesn't support custom headers) ──
+// We pass the token as a query param for SSE only. The server should accept it.
+// Note: coder.js route uses requireAuth (X-API-Key) or Bearer from query.
+
+// ── Load existing session ────────────────────────────────────────────────────
+
+async function loadSession(session) {
+  sessionId = session.id;
+  $branchTag.textContent = session.branch_name;
+  showChat();
+
+  // Load message history
+  const { messages } = await apiFetch(`/api/coder/${slug}/session/${sessionId}`);
+  for (const m of messages) {
+    if (m.role === 'user' || m.role === 'assistant') {
+      appendMessage(m.role, m.content);
+      lastMsgId = Math.max(lastMsgId, m.id);
+    }
+  }
+
+  setStatus(session.status);
+  if (session.status === 'paused') {
+    // Show resume button in chat header
+    $shipBtn.style.display = '';
+  }
+
+  connectSSE();
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+
+async function init() {
+  if (!slug) {
+    $appName.textContent = 'No app specified';
+    showError('Missing ?slug= parameter');
+    return;
+  }
+
+  if (!Object.keys(getAuthHeaders()).length) {
+    showError('Not authenticated. Please log in first.');
+    $appName.textContent = 'Not authenticated';
+    return;
+  }
+
+  try {
+    // Load app info
+    const appData = await apiFetch(`/api/apps/${slug}`);
+    const app = appData.app || appData;
+    $appName.textContent = app.name || slug;
+
+    // Check for existing session
+    const { session } = await apiFetch(`/api/coder/${slug}/session`);
+
+    if (session && !['shipped', 'error'].includes(session.status)) {
+      if (session.status === 'paused') {
+        $resumeBtn.style.display = '';
+        $resumeBtn.dataset.sessionId = session.id;
+      } else {
+        await loadSession(session);
+        return;
+      }
+    }
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+// ── Start session ────────────────────────────────────────────────────────────
+
+$startBtn.addEventListener('click', async () => {
+  $startBtn.disabled = true;
+  $startLog.style.display = 'block';
+  $startLog.textContent = 'Starting session…\n';
+
+  try {
+    const data = await apiFetch(`/api/coder/${slug}/session`, { method: 'POST' });
+    for (const line of (data.log || [])) {
+      $startLog.textContent += line + '\n';
+    }
+    const { session } = await apiFetch(`/api/coder/${slug}/session`);
+    await loadSession(session);
+  } catch (err) {
+    showError(err.message);
+    $startLog.textContent += `\nError: ${err.message}`;
+    $startBtn.disabled = false;
+  }
+});
+
+// ── Resume session ────────────────────────────────────────────────────────────
+
+$resumeBtn.addEventListener('click', async () => {
+  const sid = $resumeBtn.dataset.sessionId;
+  if (!sid) return;
+  $resumeBtn.disabled = true;
+  $startLog.style.display = 'block';
+  $startLog.textContent = 'Resuming session…\n';
+
+  try {
+    const data = await apiFetch(`/api/coder/${slug}/session/${sid}/resume`, { method: 'POST' });
+    for (const line of (data.log || [])) {
+      $startLog.textContent += line + '\n';
+    }
+    const { session } = await apiFetch(`/api/coder/${slug}/session/${sid}`);
+    await loadSession(session);
+  } catch (err) {
+    showError(err.message);
+    $startLog.textContent += `\nError: ${err.message}`;
+    $resumeBtn.disabled = false;
+  }
+});
+
+// ── Send message ─────────────────────────────────────────────────────────────
+
+async function sendPrompt() {
+  const text = $prompt.value.trim();
+  if (!text || sessionStatus !== 'idle') return;
+
+  $prompt.value = '';
+  $prompt.style.height = 'auto';
+  appendMessage('user', text);
+
+  try {
+    await apiFetch(`/api/coder/${slug}/session/${sessionId}/dispatch`, {
+      method: 'POST',
+      body: JSON.stringify({ prompt: text }),
+    });
+    setStatus('active');
+  } catch (err) {
+    showError(err.message);
+    setStatus('idle');
+  }
+}
+
+$sendBtn.addEventListener('click', sendPrompt);
+
+$prompt.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendPrompt();
+  }
+});
+
+$prompt.addEventListener('input', () => {
+  $prompt.style.height = 'auto';
+  $prompt.style.height = Math.min($prompt.scrollHeight, 160) + 'px';
+});
+
+// ── Stop dispatch ─────────────────────────────────────────────────────────────
+
+$stopBtn.addEventListener('click', async () => {
+  try {
+    await apiFetch(`/api/coder/${slug}/session/${sessionId}/stop`, { method: 'POST' });
+    finalizeStream();
+    setStatus('idle');
+  } catch (err) {
+    showError(err.message);
+  }
+});
+
+// ── Ship to sandbox ───────────────────────────────────────────────────────────
+
+$shipBtn.addEventListener('click', async () => {
+  const message = prompt('Describe this change (used as commit message):');
+  if (message === null) return;
+
+  $shipBtn.disabled = true;
+  try {
+    const data = await apiFetch(`/api/coder/${slug}/session/${sessionId}/ship`, {
+      method: 'POST',
+      body: JSON.stringify({ message: message.trim() }),
+    });
+    if (data.deployed === false) {
+      showError(data.message || 'Nothing to ship');
+    } else {
+      appendMessage('system', `Shipped to sandbox (deploy #${data.deploy_id}). Check the dashboard for deploy status.`);
+      setStatus('shipped');
+      $shipBtn.style.display = 'none';
+      $sendBtn.disabled = true;
+      $prompt.disabled = true;
+    }
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    $shipBtn.disabled = false;
+  }
+});
+
+init();
+</script>
+</body>
+</html>

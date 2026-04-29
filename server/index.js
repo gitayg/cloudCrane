@@ -52,6 +52,7 @@ import scimRoutes, { scimAdminRouter } from './routes/scim.js';
 import presenceRoutes from './routes/presence.js';
 import askRoutes from './routes/ask.js';
 import planRoutes from './routes/plan.js';
+import coderRoutes from './routes/coder.js';
 
 const PORT = process.env.PORT || 5001;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -209,7 +210,7 @@ crane init --name admin --email you@example.com</pre>
 // Excludes /api/identity/* and /api/apps/* so apps can still call AppCrane's
 // own identity / icon endpoints from inside their iframe.
 const APPCRANE_PASSTHROUGH = ['/api/identity', '/api/apps', '/api/info', '/api/_crashed', '/favicon.svg', '/docs'];
-const APPCRANE_PAGE_SLUGS = new Set(['login', 'portal', 'dashboard', 'applications', 'users-page', 'audit-page', 'settings', 'docs', 'agent-guide', 'app']);
+const APPCRANE_PAGE_SLUGS = new Set(['login', 'portal', 'dashboard', 'applications', 'users-page', 'audit-page', 'settings', 'docs', 'agent-guide', 'app', 'coder']);
 app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return next();
   for (const prefix of APPCRANE_PASSTHROUGH) {
@@ -406,6 +407,7 @@ app.use('/api/webhooks', webhooksRoutes); // Public webhook endpoint (no auth â€
 app.use('/api/presence', presenceRoutes); // Bearer auth (identity) â€” must be before logsRoutes (which installs X-API-Key requireAuth at /api)
 app.use('/api/ask', askRoutes);           // Ask Claude (Bearer auth)
 app.use('/api/plan', planRoutes);         // Plan panel (Bearer auth)
+app.use('/api/coder', coderRoutes);       // AppCrane Coder (API key auth)
 
 app.use('/api', logsRoutes);             // /api/audit, /api/apps/:slug/audit
 app.use('/api', monitoringRoutes);       // /api/server/health
@@ -426,6 +428,7 @@ app.get('/audit-page', (req, res) => sendHtml(res, join(__dirname, '..', 'docs',
 app.get('/enhancements-page', (req, res) => sendHtml(res, join(__dirname, '..', 'docs', 'enhancements-page.html')));
 app.get('/appstudio', (req, res) => sendHtml(res, join(__dirname, '..', 'docs', 'appstudio.html')));
 app.get('/settings', (req, res) => sendHtml(res, join(__dirname, '..', 'docs', 'settings.html')));
+app.get('/coder', (req, res) => sendHtml(res, join(__dirname, '..', 'docs', 'coder.html')));
 
 // App manager (app user)
 app.get('/app', (req, res) => sendHtml(res, join(__dirname, '..', 'docs', 'app.html')));
@@ -562,6 +565,14 @@ app.listen(PORT, HOST, async () => {
   `).run();
   if (orphaned.changes > 0) {
     log.warn(`Marked ${orphaned.changes} orphaned deployment(s) as failed (interrupted by restart)`);
+  }
+
+  // Recover any coder sessions that were active when the server last restarted
+  try {
+    const { recoverOrphans } = await import('./services/coder/coderSession.js');
+    recoverOrphans();
+  } catch (e) {
+    log.warn('Coder orphan recovery skipped: ' + e.message);
   }
 
   // Start health checker

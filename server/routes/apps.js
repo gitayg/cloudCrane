@@ -247,7 +247,7 @@ router.get('/:slug', requireAppAccess, (req, res) => {
 router.put('/:slug', requireAppAccess, auditMiddleware('app-update'), (req, res) => {
   const db = getDb();
   const app = req.app;
-  const { name, domain, description, category, source_type, github_url, branch, github_token, max_ram_mb, max_cpu_percent, public_access, visibility } = req.body;
+  const { name, domain, description, category, source_type, github_url, branch, github_token, max_ram_mb, max_cpu_percent, public_access, visibility, image_retention } = req.body;
 
   const updates = {};
   if (name !== undefined) updates.name = name;
@@ -271,6 +271,16 @@ router.put('/:slug', requireAppAccess, auditMiddleware('app-update'), (req, res)
     updates.visibility = public_access ? 'public' : 'private';
   }
   if (github_token !== undefined) updates.github_token_encrypted = encrypt(github_token);
+  if (image_retention !== undefined) {
+    if (req.user?.role !== 'admin') {
+      throw new AppError('Only admins can change image retention', 403, 'FORBIDDEN');
+    }
+    const ret = Number(image_retention);
+    if (!Number.isFinite(ret) || ret < 0 || ret > 50 || !Number.isInteger(ret)) {
+      throw new AppError('image_retention must be an integer between 0 and 50', 400, 'VALIDATION');
+    }
+    updates.image_retention = ret;
+  }
   if (max_ram_mb !== undefined || max_cpu_percent !== undefined) {
     if (req.user?.role !== 'admin') {
       throw new AppError('Only admins can change resource limits', 403, 'FORBIDDEN');
@@ -294,7 +304,7 @@ router.put('/:slug', requireAppAccess, auditMiddleware('app-update'), (req, res)
     return res.json({ app, message: 'No changes' });
   }
 
-  const ALLOWED_APP_COLS = new Set(['name','domain','description','category','source_type','github_url','branch','public_access','visibility','github_token_encrypted','resource_limits','runtime']);
+  const ALLOWED_APP_COLS = new Set(['name','domain','description','category','source_type','github_url','branch','public_access','visibility','github_token_encrypted','resource_limits','runtime','image_retention']);
   const invalidKey = Object.keys(updates).find(k => !ALLOWED_APP_COLS.has(k));
   if (invalidKey) throw new AppError(`Invalid field: ${invalidKey}`, 400, 'VALIDATION');
 
