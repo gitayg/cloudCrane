@@ -429,8 +429,9 @@ function appCard(a, isErrored) {
       '<span id="icon_ph_' + a.slug + '" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;color:var(--dim)">' + initials + '</span>' +
       '<img id="icon_' + a.slug + '" src="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none" onerror="tryNextIcon(this)" onload="this.style.display=\'block\';var ph=document.getElementById(\'icon_ph_' + a.slug + '\');if(ph)ph.style.display=\'none\'">' +
     '</div>';
-  const descHtml = a.description
-    ? '<div style="color:var(--dim);font-size:.78rem;margin-top:1px;font-weight:400">' + esc(a.description) + '</div>'
+  const cleanDesc = trimAppNameFromDescription(a.name, a.description);
+  const descHtml = cleanDesc
+    ? '<div style="color:var(--dim);font-size:.78rem;margin-top:1px;font-weight:400">' + esc(cleanDesc) + '</div>'
     : '';
   const nameBlock =
     '<div>' +

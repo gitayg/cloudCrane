@@ -25,6 +25,23 @@ function jsStr(s) {
     .replace(/"/g, '&quot;');
 }
 
+/**
+ * Strip a leading mention of the app name from a description so the UI
+ * doesn't show "MyApp — MyApp does X" or repeat the name redundantly.
+ * Tolerant to common separators (—, –, -, :, |, ·) and case differences.
+ * Returns '' if the description is just the name.
+ */
+function trimAppNameFromDescription(name, description) {
+  if (!description) return '';
+  if (!name) return description;
+  const desc = String(description).trim();
+  const escaped = String(name).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Match leading name optionally followed by a separator and whitespace
+  const re = new RegExp('^' + escaped + '\\s*([\\-—–:|·]+\\s*)?', 'i');
+  const stripped = desc.replace(re, '').trim();
+  return stripped;
+}
+
 function getKey() { return KEY; }
 function setKey(k) { KEY = k; localStorage.setItem('cc_api_key', k); }
 

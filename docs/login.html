@@ -440,11 +440,14 @@ function showApps(data) {
 
     card.appendChild(top);
 
-    if (a.description) {
-      const desc = document.createElement('div');
-      desc.className = 'app-card-desc';
-      desc.textContent = a.description;
-      card.appendChild(desc);
+    {
+      const cleanDesc = trimAppNameFromDescription(a.name, a.description);
+      if (cleanDesc) {
+        const desc = document.createElement('div');
+        desc.className = 'app-card-desc';
+        desc.textContent = cleanDesc;
+        card.appendChild(desc);
+      }
     }
 
     // Env buttons
@@ -542,11 +545,14 @@ function showApps(data) {
 
       card.appendChild(top);
 
-      if (a.description) {
-        const desc = document.createElement('div');
-        desc.className = 'app-card-desc';
-        desc.textContent = a.description;
-        card.appendChild(desc);
+      {
+        const cleanDesc = trimAppNameFromDescription(a.name, a.description);
+        if (cleanDesc) {
+          const desc = document.createElement('div');
+          desc.className = 'app-card-desc';
+          desc.textContent = cleanDesc;
+          card.appendChild(desc);
+        }
       }
 
       const reqBtn = document.createElement('button');
