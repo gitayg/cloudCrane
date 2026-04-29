@@ -287,10 +287,17 @@ export async function generateCode({ jobId, app, enhancementId, plan, summary, a
       reject(err);
     });
 
-    child.on('close', (code) => {
+    child.on('close', async (code) => {
       clearTimeout(timer); clearInterval(sentinelPoll);
       if (pendingCodingError) return reject(pendingCodingError);
       if (timedOut)           return reject(new Error('Code generation timed out'));
+      // Final sentinel check — file may have been written in the last poll window before exit
+      if (!codingDoneHandled && existsSync(sentinelPath)) {
+        codingDoneHandled = true;
+        onLog?.('[studio] Sentinel detected at container exit — handing off to host for git operations');
+        try { await onCodingDone?.(workspaceDir, branchName); } catch (err) { return reject(err); }
+        return resolve({ branchName });
+      }
       if (!codingDoneHandled && code !== 0) return reject(new Error(`Studio container exited with code ${code}`));
       if (!codingDoneHandled) return reject(new Error('Container exited before coding sentinel was written'));
       resolve({ branchName });
