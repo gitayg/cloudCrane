@@ -70,6 +70,9 @@ input:focus{border-color:var(--accent)}
 .app-card:hover .card-quick-actions{display:flex}
 .quick-btn{flex:1;background:none;border:1px solid var(--border);color:var(--dim);border-radius:6px;padding:5px 6px;cursor:pointer;font-size:.74rem;font-weight:500;transition:border-color .15s,color .15s;font-family:inherit}
 .quick-btn:hover{border-color:var(--accent);color:var(--accent)}
+.card-enh-icon{position:absolute;top:10px;right:10px;background:none;border:none;cursor:pointer;font-size:1rem;opacity:0;transition:opacity .15s;padding:2px;line-height:1}
+.app-card:hover .card-enh-icon{opacity:.6}
+.card-enh-icon:hover{opacity:1!important}
 
 /* Iframe overlay */
 .app-frame{display:none;position:fixed;inset:0;z-index:100;flex-direction:column;background:var(--bg)}
@@ -545,15 +548,13 @@ function showApps(data) {
         openApp(prodUrl, a.name, a.slug, a.has_icon);
       });
 
-      // Only 💡 Enhance on hover
-      const qa = document.createElement('div');
-      qa.className = 'card-quick-actions';
+      // 💡 icon-only enhance button, top-right corner on hover
       const enhBtn = document.createElement('button');
-      enhBtn.className = 'quick-btn';
-      enhBtn.textContent = '\uD83D\uDCA1 Enhance';
+      enhBtn.className = 'card-enh-icon';
+      enhBtn.title = 'Request Enhancement';
+      enhBtn.textContent = '\uD83D\uDCA1';
       enhBtn.addEventListener('click', function(e) { e.stopPropagation(); openEnhModal(a.slug, a.name); });
-      qa.appendChild(enhBtn);
-      card.appendChild(qa);
+      card.appendChild(enhBtn);
     }
 
     return card;
