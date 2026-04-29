@@ -1143,7 +1143,15 @@ function openApp(url, name, slug, hasIcon, appData) {
     icon.src = window.location.origin + '/api/apps/' + slug + '/icon';
   }
   document.getElementById('jobsBtn').style.display = '';
+  document.getElementById('planContainerBadge').classList.remove('active');
   refreshJobsBadge();
+  if (_userRole === 'admin' && slug) {
+    fetch(API + '/api/plan/active-job/' + encodeURIComponent(slug), {
+      headers: { 'Authorization': 'Bearer ' + sessionToken },
+    }).then(function(r) { return r.ok ? r.json() : null; }).then(function(d) {
+      if (d && d.job_id) _startPlanJobPolling(d.job_id);
+    }).catch(function() {});
+  }
 }
 
 function closeApp() {

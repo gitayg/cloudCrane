@@ -222,6 +222,21 @@ router.post('/:enhancementId/build', (req, res) => {
   }
 });
 
+// GET /api/plan/active-job/:slug — returns the active code job for an app (admin only)
+router.get('/active-job/:slug', (req, res) => {
+  const user = resolveUser(req);
+  if (!user || user.role !== 'admin') throw new AppError('Admin only', 403, 'FORBIDDEN');
+  const { slug } = req.params;
+  const db = getDb();
+  const job = db.prepare(`
+    SELECT j.id FROM enhancement_jobs j
+    JOIN enhancement_requests er ON er.id = j.enhancement_id
+    WHERE er.app_slug = ? AND j.phase = 'code' AND j.status IN ('queued', 'running')
+    ORDER BY j.id DESC LIMIT 1
+  `).get(slug);
+  res.json({ job_id: job ? job.id : null });
+});
+
 // GET /api/plan/job/:jobId — job detail with logs and token count (polled by UI)
 router.get('/job/:jobId', (req, res) => {
   const user = resolveUser(req);
