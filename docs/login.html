@@ -95,6 +95,9 @@ input:focus{border-color:var(--accent)}
 .btn-back{background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:5px;padding:4px 12px;cursor:pointer;font-size:.78rem;font-weight:600;width:auto}
 .btn-enhance{background:none;color:var(--dim);border:1px solid var(--border);border-radius:5px;padding:4px 12px;cursor:pointer;font-size:.78rem;font-weight:500;width:auto;transition:border-color .15s,color .15s}
 .btn-enhance:hover{border-color:var(--accent);color:var(--accent)}
+.btn-enhance.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.peek-hint{position:fixed;top:52px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;padding:6px 14px;border-radius:6px;font-size:.8rem;z-index:150;box-shadow:0 4px 12px #0004;display:none}
+.peek-hint.active{display:block}
 .app-frame iframe{flex:1;border:none;background:#fff}
 .presence-wrap{display:flex;align-items:center;gap:4px;position:relative;cursor:default}
 .presence-avatars{display:flex;align-items:center}
@@ -184,11 +187,13 @@ input:focus{border-color:var(--accent)}
         </div>
       </div>
       <span id="frameUserInfo" class="frame-user"></span>
+      <button id="peekBtn" class="btn-enhance" onclick="togglePeekMode()" title="Point & click an element to add context to your enhancement request (Esc to cancel)">🎯 Point</button>
       <button class="btn-enhance" onclick="openEnhModal()">💡 Request Enhancement</button>
       <a id="frameNewTab" href="#" target="_blank" class="btn-newtab">Open in new tab ↗</a>
       <button class="btn-back" onclick="closeApp()">← Back</button>
     </div>
   </div>
+  <div id="peekHint" class="peek-hint">🎯 Click any element in the page to capture it as context · Press <b>Esc</b> to cancel</div>
   <iframe id="frameIframe" src="" allow="fullscreen"></iframe>
 </div>
 
@@ -863,6 +868,7 @@ function openApp(url, name, slug, hasIcon) {
 }
 
 function closeApp() {
+  if (_peekActive) stopPeekMode();
   document.getElementById('appFrame').classList.remove('open');
   document.getElementById('frameIframe').src = '';
   const icon = document.getElementById('frameAppIcon');
@@ -993,16 +999,141 @@ async function loadMyEnhancements() {
   } catch (e) {}
 }
 
+// ─── Peek / point-and-click element selector ─────────────────────────────
+var _peekActive = false;
+var _peekHoverEl = null;
+var _peekContext = null;
+
+function togglePeekMode() {
+  if (_peekActive) { stopPeekMode(); return; }
+  const iframe = document.getElementById('frameIframe');
+  let doc;
+  try {
+    doc = iframe.contentDocument;
+    if (!doc || !doc.body) throw new Error('iframe not ready');
+  } catch (e) {
+    alert("Can't access this app's content for point-and-click — the app is served from a different origin than the portal.");
+    return;
+  }
+
+  _peekActive = true;
+  document.getElementById('peekBtn').classList.add('active');
+  document.getElementById('peekHint').classList.add('active');
+
+  var style = doc.getElementById('__ac_peek_style');
+  if (!style) {
+    style = doc.createElement('style');
+    style.id = '__ac_peek_style';
+    style.textContent =
+      '.__ac_peek_hover{outline:2px solid #3b82f6!important;outline-offset:1px!important;background:#3b82f61a!important;cursor:crosshair!important}' +
+      ' *{cursor:crosshair!important}';
+    doc.head.appendChild(style);
+  }
+
+  doc.addEventListener('mouseover', _peekMouseOver, true);
+  doc.addEventListener('mouseout', _peekMouseOut, true);
+  doc.addEventListener('click', _peekClick, true);
+  doc.addEventListener('keydown', _peekKeydown, true);
+  document.addEventListener('keydown', _peekKeydown, true);
+}
+
+function stopPeekMode() {
+  _peekActive = false;
+  document.getElementById('peekBtn').classList.remove('active');
+  document.getElementById('peekHint').classList.remove('active');
+  try {
+    const doc = document.getElementById('frameIframe').contentDocument;
+    if (doc) {
+      if (_peekHoverEl) _peekHoverEl.classList.remove('__ac_peek_hover');
+      const style = doc.getElementById('__ac_peek_style');
+      if (style) style.remove();
+      doc.removeEventListener('mouseover', _peekMouseOver, true);
+      doc.removeEventListener('mouseout', _peekMouseOut, true);
+      doc.removeEventListener('click', _peekClick, true);
+      doc.removeEventListener('keydown', _peekKeydown, true);
+    }
+  } catch (_) {}
+  document.removeEventListener('keydown', _peekKeydown, true);
+  _peekHoverEl = null;
+}
+
+function _peekMouseOver(e) {
+  if (_peekHoverEl) _peekHoverEl.classList.remove('__ac_peek_hover');
+  _peekHoverEl = e.target;
+  if (_peekHoverEl && _peekHoverEl.classList) _peekHoverEl.classList.add('__ac_peek_hover');
+}
+
+function _peekMouseOut(e) {
+  if (e.target && e.target.classList) e.target.classList.remove('__ac_peek_hover');
+}
+
+function _peekClick(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const info = _capturePeekInfo(e.target);
+  stopPeekMode();
+  _peekContext = info;
+  openEnhModal(currentAppSlug, document.getElementById('frameAppName').textContent);
+}
+
+function _peekKeydown(e) {
+  if (e.key === 'Escape') { e.preventDefault(); stopPeekMode(); }
+}
+
+function _capturePeekInfo(el) {
+  const doc = el.ownerDocument;
+  function cssPath(node) {
+    if (!node || node.nodeType !== 1) return '';
+    const path = [];
+    let cur = node;
+    while (cur && cur.nodeType === 1 && cur !== doc.documentElement) {
+      let sel = cur.nodeName.toLowerCase();
+      if (cur.id) { sel += '#' + cur.id; path.unshift(sel); break; }
+      let sib = cur, nth = 1;
+      while ((sib = sib.previousElementSibling)) if (sib.nodeName === cur.nodeName) nth++;
+      if (nth > 1) sel += ':nth-of-type(' + nth + ')';
+      path.unshift(sel);
+      cur = cur.parentElement;
+    }
+    return path.join(' > ');
+  }
+  const cls = typeof el.className === 'string' ? el.className.trim() : '';
+  return {
+    path: doc.location.pathname + doc.location.search,
+    tag: el.tagName ? el.tagName.toLowerCase() : '',
+    id: el.id || null,
+    classes: cls || null,
+    text: (el.textContent || '').trim().slice(0, 200),
+    selector: cssPath(el),
+  };
+}
+
 function openEnhModal(slug, name) {
   if (slug) currentAppSlug = slug;
   const appName = name || document.getElementById('frameAppName').textContent;
   document.getElementById('enhAppLabel').textContent = appName ? 'App: ' + appName : '';
-  document.getElementById('enhText').value = '';
+  const textarea = document.getElementById('enhText');
+  if (_peekContext) {
+    const c = _peekContext;
+    const ctx = [
+      '',
+      '--- Pointed element ---',
+      'URL: ' + c.path,
+      'Selector: ' + c.selector,
+      'Tag: <' + c.tag + '>' + (c.id ? ' #' + c.id : '') + (c.classes ? ' .' + c.classes.split(/\s+/).join('.') : ''),
+      c.text ? ('Text: "' + c.text + '"') : null,
+    ].filter(function(x){return x!==null;}).join('\n');
+    textarea.value = ctx + '\n\n';
+    _peekContext = null;
+  } else {
+    textarea.value = '';
+  }
   document.getElementById('enhStatus').textContent = '';
   document.getElementById('enhStatus').style.color = '';
   document.getElementById('enhSubmitBtn').disabled = false;
   document.getElementById('enhOverlay').classList.add('open');
-  document.getElementById('enhText').focus();
+  textarea.focus();
+  if (textarea.value) textarea.setSelectionRange(textarea.value.length, textarea.value.length);
 }
 
 function closeEnhModal() {
