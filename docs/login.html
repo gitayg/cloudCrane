@@ -1883,6 +1883,13 @@ async function _pollPlanJob() {
     if (d.status === 'done' || d.status === 'failed') {
       _stopPlanJobPolling();
       refreshJobsBadge();
+      if (d.status === 'done') {
+        // Give the deploy a moment to go live, then reload the iframe
+        setTimeout(function() {
+          var f = document.getElementById('frameIframe');
+          if (f && f.src && f.src !== 'about:blank') { f.src = f.src; }
+        }, 4000);
+      }
     }
   } catch (_) {}
 }
