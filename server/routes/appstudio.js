@@ -138,6 +138,45 @@ router.delete('/jobs/:jobId', requireAdmin, auditMiddleware('appstudio.delete-jo
 });
 
 /**
+ * GET /api/appstudio/:id/trace - Full job trace with parsed output
+ */
+router.get('/:id/trace', (req, res) => {
+  const db = getDb();
+  const enh = db.prepare('SELECT id, status, ai_log FROM enhancement_requests WHERE id = ?').get(req.params.id);
+  if (!enh) throw new AppError('Enhancement not found', 404, 'NOT_FOUND');
+
+  const jobs = db.prepare('SELECT * FROM enhancement_jobs WHERE enhancement_id = ? ORDER BY id ASC').all(enh.id);
+
+  const trace = jobs.map(j => {
+    let output = null;
+    if (j.output_json) { try { output = JSON.parse(j.output_json); } catch (_) {} }
+    const startMs = j.started_at ? new Date(j.started_at + 'Z').getTime() : null;
+    const endMs   = j.finished_at ? new Date(j.finished_at + 'Z').getTime() : null;
+    return {
+      id: j.id,
+      phase: j.phase,
+      status: j.status,
+      created_at: j.created_at,
+      started_at: j.started_at,
+      finished_at: j.finished_at,
+      duration_ms: startMs && endMs ? endMs - startMs : null,
+      error: j.error_message,
+      log: output?.log || null,
+      text: output?.text || null,
+      branch: output?.branchName || null,
+    };
+  });
+
+  res.json({
+    id: enh.id,
+    status: enh.status,
+    ai_log: enh.ai_log || '',
+    active: jobs.some(j => j.status === 'running' || j.status === 'queued'),
+    trace,
+  });
+});
+
+/**
  * GET /api/appstudio/:id - Full enhancement detail with plan + jobs
  */
 router.get('/:id', (req, res) => {

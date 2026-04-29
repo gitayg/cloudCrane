@@ -52,10 +52,21 @@
 .actions-bar{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
 .cost-badge{font-size:.75rem;color:var(--dim);background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 8px}
 
-/* Planning stream */
+/* Trace panel */
 @keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.3}}
-.plan-stream-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block;animation:pulse-dot 1.4s ease-in-out infinite}
-.plan-stream-box{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;font-size:.75rem;color:var(--dim);max-height:420px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;margin:0;font-family:'SF Mono',Monaco,monospace;line-height:1.55}
+.trace-panel{margin-top:20px;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.trace-heading{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);padding:8px 14px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.trace-pulse{width:7px;height:7px;border-radius:50%;background:var(--accent);flex-shrink:0;animation:pulse-dot 1.4s ease-in-out infinite}
+.trace-block{border-bottom:1px solid var(--border)}
+.trace-block:last-child{border-bottom:none}
+.trace-block-hdr{display:flex;align-items:center;gap:8px;padding:9px 14px;cursor:pointer;background:var(--surface);user-select:none}
+.trace-block-hdr:hover{background:var(--surface2)}
+.trace-phase{font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;min-width:70px}
+.trace-timing{font-size:.72rem;color:var(--dim);font-family:monospace;margin-left:auto}
+.trace-err{font-size:.72rem;color:var(--red);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trace-body{background:var(--bg);padding:10px 14px;font-family:'SF Mono',Monaco,monospace;font-size:.73rem;color:var(--dim);white-space:pre-wrap;word-break:break-word;line-height:1.6;max-height:500px;overflow-y:auto;border-top:1px solid var(--border)}
+.trace-ai-log{padding:10px 14px;font-size:.78rem;color:var(--dim);background:var(--surface);white-space:pre-wrap;border-top:1px solid var(--border);line-height:1.5}
+.ti-queued{color:var(--dim)}.ti-running{color:var(--accent)}.ti-done{color:var(--green)}.ti-failed{color:var(--red)}
 
 /* Library / Jobs / Usage */
 .context-editor{width:100%;min-height:200px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;color:var(--text);font-family:monospace;font-size:.82rem;resize:vertical}
@@ -301,45 +312,94 @@ async function showDetail(id) {
   msgBox.textContent = e.message;
   panel.appendChild(msgBox);
 
-  // Live planning stream
-  if (e.status === 'planning' || e.status === 'coding') {
-    var streamSection = document.createElement('div');
-    streamSection.style.marginTop = '16px';
+  // Trace panel
+  var tracePanel = document.createElement('div'); tracePanel.className = 'trace-panel'; tracePanel.id = 'tracePanel';
+  panel.appendChild(tracePanel);
 
-    var streamHeader = document.createElement('div');
-    streamHeader.style.cssText = 'font-size:.82rem;color:var(--accent);margin-bottom:8px;display:flex;align-items:center;gap:8px;font-weight:600';
-    var dot = document.createElement('span'); dot.className = 'plan-stream-dot';
-    streamHeader.appendChild(dot);
-    streamHeader.appendChild(document.createTextNode(e.status === 'planning' ? 'AI is generating a plan…' : 'AI is writing code…'));
-    streamSection.appendChild(streamHeader);
+  var _tracePoll = null;
+  function renderTrace(t) {
+    tracePanel.textContent = '';
+    var hdr = document.createElement('div'); hdr.className = 'trace-heading';
+    if (t.active) { var dp = document.createElement('span'); dp.className = 'trace-pulse'; hdr.appendChild(dp); }
+    hdr.appendChild(document.createTextNode(t.active ? 'Live trace — job running' : 'Trace — ' + t.trace.length + ' job' + (t.trace.length !== 1 ? 's' : '')));
+    tracePanel.appendChild(hdr);
 
-    var pre = document.createElement('pre'); pre.className = 'plan-stream-box'; pre.id = 'planStream';
-    var runningJob = jobs.find(function(j) { return j.status === 'running'; });
-    if (runningJob && runningJob.output_json) {
-      try { pre.textContent = JSON.parse(runningJob.output_json).text || 'Waiting…'; } catch(_) { pre.textContent = 'Waiting…'; }
-    } else { pre.textContent = 'Waiting for response…'; }
-    streamSection.appendChild(pre);
-    panel.appendChild(streamSection);
+    t.trace.forEach(function(j) {
+      var block = document.createElement('div'); block.className = 'trace-block';
 
-    var _poll = setInterval(async function() {
-      var fresh = await apiFetch('/api/appstudio/' + id);
-      if (fresh.enhancement.status !== e.status) {
-        clearInterval(_poll);
-        showDetail(id);
-        return;
+      var bh = document.createElement('div'); bh.className = 'trace-block-hdr';
+      var jtag = document.createElement('span'); jtag.className = 'job-tag';
+      jtag.textContent = 'JOB-' + String(j.id).padStart(4,'0');
+      jtag.title = 'Click to copy'; jtag.style.marginRight = '2px';
+      jtag.addEventListener('click', function(e2) { e2.stopPropagation(); navigator.clipboard.writeText(jtag.textContent); });
+      var ph = document.createElement('span'); ph.className = 'trace-phase';
+      ph.textContent = j.phase;
+      var st = document.createElement('span');
+      st.className = 'ti-' + j.status;
+      st.textContent = j.status === 'done' ? '✓' : j.status === 'failed' ? '✗' : j.status === 'running' ? '▶' : '·';
+      st.style.cssText = 'font-size:.85rem;font-weight:700;width:14px;flex-shrink:0';
+      var timing = document.createElement('span'); timing.className = 'trace-timing';
+      if (j.duration_ms != null) timing.textContent = (j.duration_ms / 1000).toFixed(1) + 's';
+      else if (j.started_at) timing.textContent = (j.started_at || '').slice(0,19);
+      if (j.error) {
+        var err = document.createElement('span'); err.className = 'trace-err'; err.textContent = j.error; bh.appendChild(jtag); bh.appendChild(ph); bh.appendChild(st); bh.appendChild(err); bh.appendChild(timing);
+      } else { bh.appendChild(jtag); bh.appendChild(ph); bh.appendChild(st); bh.appendChild(timing); }
+      if (j.status === 'failed') {
+        var retBtn = document.createElement('button');
+        retBtn.textContent = 'Retry'; retBtn.style.cssText = 'margin-left:8px;font-size:.7rem;padding:2px 8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px;cursor:pointer;flex-shrink:0';
+        retBtn.addEventListener('click', function(jid, eid) { return async function(ev) { ev.stopPropagation();
+          var r = await apiPost('/api/appstudio/jobs/' + jid + '/retry', {});
+          if (r && r.error) { alert(r.error.message || r.error); return; }
+          fetchAndRender();
+        }; }(j.id, id));
+        bh.appendChild(retBtn);
       }
-      var rj = (fresh.jobs || []).find(function(j) { return j.status === 'running'; });
-      if (rj && rj.output_json) {
-        try {
-          var parsed = JSON.parse(rj.output_json);
-          var el = document.getElementById('planStream');
-          if (el && parsed.text) { el.textContent = parsed.text; el.scrollTop = el.scrollHeight; }
-        } catch(_) {}
+      if (j.status !== 'running') {
+        var delBtn = document.createElement('button');
+        delBtn.textContent = '✕'; delBtn.title = 'Delete job'; delBtn.style.cssText = 'margin-left:4px;font-size:.7rem;padding:2px 7px;color:var(--red);background:none;border:1px solid var(--red);border-radius:4px;cursor:pointer;flex-shrink:0';
+        delBtn.addEventListener('click', function(jid, eid) { return async function(ev) { ev.stopPropagation();
+          if (!confirm('Delete job JOB-' + String(jid).padStart(4,'0') + '?')) return;
+          var r = await apiDelete('/api/appstudio/jobs/' + jid);
+          if (r && r.error) { alert(r.error.message || r.error); return; }
+          fetchAndRender();
+        }; }(j.id, id));
+        bh.appendChild(delBtn);
       }
-    }, 1500);
+      block.appendChild(bh);
 
-    back.addEventListener('click', function() { clearInterval(_poll); });
+      var body = document.createElement('pre'); body.className = 'trace-body'; body.id = 'trace-body-' + j.id;
+      var bodyLines = [];
+      if (j.text) bodyLines.push(j.text);
+      if (j.log && j.log.length) bodyLines.push(j.log.join('\n'));
+      if (j.branch) bodyLines.push('Branch: ' + j.branch);
+      if (j.error) bodyLines.push('Error: ' + j.error);
+      body.textContent = bodyLines.join('\n') || (j.status === 'queued' ? 'Queued, waiting for worker…' : j.status === 'running' ? 'Starting…' : '(no output)');
+
+      var isOpen = j.status === 'running' || j.status === 'failed' || (j.status === 'queued');
+      body.style.display = isOpen ? 'block' : 'none';
+      bh.addEventListener('click', function() { body.style.display = body.style.display === 'none' ? 'block' : 'none'; });
+      block.appendChild(body);
+      tracePanel.appendChild(block);
+
+      if (j.status === 'running') { body.scrollTop = body.scrollHeight; }
+    });
+
+    if (t.ai_log && t.ai_log.trim()) {
+      var logDiv = document.createElement('div'); logDiv.className = 'trace-ai-log';
+      logDiv.textContent = t.ai_log.trim();
+      tracePanel.appendChild(logDiv);
+    }
   }
+
+  async function fetchAndRender() {
+    var t = await apiFetch('/api/appstudio/' + id + '/trace');
+    renderTrace(t);
+    if (!t.active && _tracePoll) { clearInterval(_tracePoll); _tracePoll = null; }
+  }
+
+  fetchAndRender();
+  _tracePoll = setInterval(fetchAndRender, 1500);
+  back.addEventListener('click', function() { if (_tracePoll) { clearInterval(_tracePoll); _tracePoll = null; } });
 
   if (e.ai_plan) {
     var planHeading = document.createElement('h4');
@@ -472,49 +532,6 @@ async function showDetail(id) {
   }
 
   panel.appendChild(actions);
-
-  if (jobs.length) {
-    var jobsHeading = document.createElement('h4');
-    jobsHeading.textContent = 'Jobs'; jobsHeading.style.margin = '20px 0 8px';
-    panel.appendChild(jobsHeading);
-    for (var ji = 0; ji < jobs.length; ji++) {
-      var j = jobs[ji];
-      var row = document.createElement('div'); row.className = 'job-row';
-      var tag = document.createElement('span'); tag.className = 'job-tag';
-      tag.textContent = 'JOB-' + String(j.id).padStart(4, '0');
-      tag.title = 'Click to copy tracking ID';
-      tag.addEventListener('click', function(jid) { return function() { navigator.clipboard.writeText('JOB-' + String(jid).padStart(4, '0')); }; }(j.id));
-      var left = document.createElement('span'); left.style.margin = '0 8px; flex:1';
-      left.textContent = j.phase + ' (' + j.status + ')';
-      var right = document.createElement('span'); right.style.color = 'var(--dim)';
-      right.textContent = (j.started_at || j.created_at || '').slice(0, 19);
-      if (j.error_message) { right.style.color = 'var(--red)'; right.textContent = j.error_message.slice(0, 80); }
-      row.appendChild(tag); row.appendChild(left); row.appendChild(right);
-      if (j.status === 'failed') {
-        var retryBtn = document.createElement('button');
-        retryBtn.textContent = 'Retry'; retryBtn.style.cssText = 'margin-left:10px;font-size:.72rem;padding:2px 8px';
-        retryBtn.addEventListener('click', function(jid, eid) { return async function() {
-          var r = await apiPost('/api/appstudio/jobs/' + jid + '/retry', {});
-          if (r.error) { alert(r.error); return; }
-          showDetail(eid);
-        }; }(j.id, e.id));
-        row.appendChild(retryBtn);
-      }
-      if (j.status !== 'running') {
-        var delBtn = document.createElement('button');
-        delBtn.textContent = '✕'; delBtn.title = 'Delete job';
-        delBtn.style.cssText = 'margin-left:6px;font-size:.72rem;padding:2px 7px;color:var(--red);background:none;border:1px solid var(--red);border-radius:4px;cursor:pointer';
-        delBtn.addEventListener('click', function(jid, eid) { return async function() {
-          if (!confirm('Delete job JOB-' + String(jid).padStart(4,'0') + '?')) return;
-          var r = await apiDelete('/api/appstudio/jobs/' + jid);
-          if (r.error) { alert(r.error); return; }
-          showDetail(eid);
-        }; }(j.id, e.id));
-        row.appendChild(delBtn);
-      }
-      panel.appendChild(row);
-    }
-  }
 
   el.appendChild(panel);
 }
