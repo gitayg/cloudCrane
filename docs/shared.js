@@ -83,7 +83,12 @@ function dot(status) {
 }
 
 function badge(status) {
-  const cls = {live:'badge-live',failed:'badge-failed',building:'badge-building',deploying:'badge-building'}[status] || 'badge-pending';
+  const cls = {
+    live:'badge-live', failed:'badge-failed', building:'badge-building',
+    deploying:'badge-deploying', degraded:'badge-degraded',
+    'rolling-back':'badge-rolling-back', offline:'badge-offline',
+    'health-check':'badge-health-check',
+  }[status] || 'badge-pending';
   return '<span class="badge ' + cls + '">' + status + '</span>';
 }
 
@@ -98,15 +103,18 @@ function statCard(label, value, sub, pct) {
 
 function sidebar(active) {
   const pages = [
-    {id:'dashboard',label:'Dashboard',href:'/dashboard'},
-    {id:'applications',label:'Applications',href:'/applications'},
-    {id:'users',label:'Users',href:'/users-page'},
-    {id:'audit',label:'Audit Log',href:'/audit-page'},
-    {id:'appstudio',label:'AppStudio',href:'/appstudio'},
-    {id:'settings',label:'Settings',href:'/settings'},
+    {id:'dashboard',  label:'Dashboard',   href:'/dashboard',    icon:'⊞'},
+    {id:'applications',label:'Applications',href:'/applications', icon:'▣'},
+    {id:'users',      label:'Users',        href:'/users-page',   icon:'◉'},
+    {id:'audit',      label:'Audit Log',    href:'/audit-page',   icon:'≡'},
+    {id:'appstudio',  label:'AppStudio',    href:'/appstudio',    icon:'✦'},
+    {id:'settings',   label:'Settings',     href:'/settings',     icon:'⚙'},
   ];
   const nav = pages.map(p =>
-    '<a href="' + p.href + '" class="sidebar-link' + (active === p.id ? ' active' : '') + '">' + p.label + '</a>'
+    '<a href="' + p.href + '" class="sidebar-link' + (active === p.id ? ' active' : '') + '" title="' + p.label + '">' +
+      '<span class="sidebar-link-icon">' + p.icon + '</span>' +
+      '<span class="sidebar-link-text">' + p.label + '</span>' +
+    '</a>'
   ).join('');
 
   return '<div class="mobile-topbar">' +
@@ -118,16 +126,30 @@ function sidebar(active) {
       '<a href="/dashboard" class="sidebar-logo">App<span>Crane</span></a>' +
       '<nav class="sidebar-nav">' + nav + '</nav>' +
       '<div class="sidebar-footer">' +
-        '<div id="userInfo" style="color:var(--text);font-weight:600"></div>' +
-        '<div id="craneVersion" style="color:var(--dim);cursor:pointer" onclick="checkForUpdate()" title="Click to check for updates"></div>' +
-        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:2px">' +
+        '<div id="userInfo" style="color:var(--text);font-weight:600" class="sidebar-footer-meta"></div>' +
+        '<div id="craneVersion" style="color:var(--dim);cursor:pointer" class="sidebar-footer-meta" onclick="checkForUpdate()" title="Click to check for updates"></div>' +
+        '<div class="sidebar-footer-links" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:2px">' +
           '<a href="/docs" style="color:var(--dim);text-decoration:none">Docs</a>' +
           '<a href="/agent-guide" style="color:var(--dim);text-decoration:none">Agent Guide</a>' +
           '<button class="btn" onclick="setKey(\'\');location.href=\'/dashboard\'" style="font-size:.72rem;padding:2px 8px;margin-left:auto">Logout</button>' +
         '</div>' +
-        '<div class="sidebar-kbd-hint" onclick="openCmdPalette()" title="Command palette">' +
-          '<kbd>⌘K</kbd><span>Search</span>' +
+        '<div style="display:flex;align-items:center;gap:4px;margin-top:5px">' +
+          '<div class="sidebar-kbd-hint" onclick="openCmdPalette()" title="Command palette (⌘K)">' +
+            '<kbd>⌘K</kbd>' +
+          '</div>' +
+          '<button class="theme-btn" onclick="toggleTheme()" id="themeBtn" title="Toggle light/dark mode">☀</button>' +
+          '<div class="notif-wrap" style="margin-left:auto">' +
+            '<button class="notif-bell-btn" onclick="toggleNotifPanel(event)" id="notifBell" title="Notifications">🔔</button>' +
+            '<span class="notif-badge" id="notifBadge"></span>' +
+            '<div class="notif-dropdown" id="notifDropdown">' +
+              '<div class="notif-dd-hdr">Notifications</div>' +
+              '<div id="notifList" class="notif-empty">Loading\u2026</div>' +
+            '</div>' +
+          '</div>' +
         '</div>' +
+        '<button class="sidebar-collapse-btn" onclick="toggleSidebarCollapse()" id="collapseBtn">' +
+          '<span id="collapseIcon">\u25c4</span><span class="btn-col-text">&nbsp;Collapse</span>' +
+        '</button>' +
       '</div>' +
     '</aside>';
 }
@@ -454,3 +476,99 @@ document.addEventListener('keydown',function(e){
   if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();if(_cmdOpen)closeCmdPalette();else openCmdPalette();}
   else if(e.key==='Escape'&&_cmdOpen){closeCmdPalette();}
 });
+
+// ── Theme ─────────────────────────────────────────────────────
+(function initTheme() {
+  var t = localStorage.getItem('cc_theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', t);
+})();
+
+function toggleTheme() {
+  var cur = document.documentElement.getAttribute('data-theme') || 'dark';
+  var next = cur === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('cc_theme', next);
+  var btn = document.getElementById('themeBtn');
+  if (btn) btn.textContent = next === 'dark' ? '☀' : '🌙';
+}
+
+// ── Sidebar collapse ──────────────────────────────────────────
+function toggleSidebarCollapse() {
+  var sb = document.getElementById('mainSidebar');
+  var pc = document.querySelector('.page-content');
+  var collapsed = sb.classList.toggle('collapsed');
+  if (pc) pc.classList.toggle('sidebar-collapsed', collapsed);
+  localStorage.setItem('cc_sb_col', collapsed ? '1' : '');
+  var icon = document.getElementById('collapseIcon');
+  if (icon) icon.textContent = collapsed ? '\u25b8' : '\u25c4';
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  if (localStorage.getItem('cc_sb_col') === '1') {
+    var sb = document.getElementById('mainSidebar');
+    var pc = document.querySelector('.page-content');
+    if (sb) sb.classList.add('collapsed');
+    if (pc) pc.classList.add('sidebar-collapsed');
+    var icon = document.getElementById('collapseIcon');
+    if (icon) icon.textContent = '\u25b8';
+  }
+  var t = localStorage.getItem('cc_theme') || 'dark';
+  var btn = document.getElementById('themeBtn');
+  if (btn) btn.textContent = t === 'dark' ? '☀' : '🌙';
+});
+
+// ── Notification bell ─────────────────────────────────────────
+var _notifOpen = false;
+
+function toggleNotifPanel(e) {
+  if (e) e.stopPropagation();
+  _notifOpen = !_notifOpen;
+  var dd = document.getElementById('notifDropdown');
+  if (dd) dd.classList.toggle('open', _notifOpen);
+  if (_notifOpen) _loadNotifications();
+}
+
+document.addEventListener('click', function(e) {
+  if (_notifOpen && !e.target.closest('.notif-wrap')) {
+    _notifOpen = false;
+    var dd = document.getElementById('notifDropdown');
+    if (dd) dd.classList.remove('open');
+  }
+});
+
+async function _loadNotifications() {
+  var list = document.getElementById('notifList');
+  if (!list) return;
+  try {
+    var data = await apiFetch('/api/apps');
+    var items = [];
+    (data.apps || []).forEach(function(a) {
+      if (a.prod_down) items.push({title: a.name + ' (prod)', sub: 'Health check failing', color: 'var(--red)'});
+      if (a.sand_down) items.push({title: a.name + ' (sandbox)', sub: 'Health check failing', color: 'var(--orange)'});
+    });
+    var badge = document.getElementById('notifBadge');
+    if (badge) { badge.textContent = items.length || ''; badge.classList.toggle('show', items.length > 0); }
+    if (!items.length) {
+      list.className = 'notif-empty';
+      list.textContent = 'All systems operational \u2713';
+      return;
+    }
+    list.className = '';
+    list.innerHTML = '';
+    items.forEach(function(n) {
+      var row = document.createElement('div');
+      row.className = 'notif-row';
+      var dot = document.createElement('div');
+      dot.className = 'notif-row-dot';
+      dot.style.background = n.color;
+      var body = document.createElement('div');
+      body.innerHTML = '<div class="notif-row-title">' + esc(n.title) + '</div><div class="notif-row-sub">' + esc(n.sub) + '</div>';
+      row.appendChild(dot);
+      row.appendChild(body);
+      list.appendChild(row);
+    });
+  } catch(e) {
+    list.className = 'notif-empty';
+    list.textContent = 'Could not load notifications';
+  }
+}

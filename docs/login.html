@@ -63,6 +63,13 @@ input:focus{border-color:var(--accent)}
 .h-gray{background:var(--dim)}
 .env-arr{color:var(--dim);font-size:.75rem;margin-left:auto}
 .no-apps{color:var(--dim);padding:40px 0;text-align:center;font-size:.9rem;line-height:1.7}
+/* Hover quick actions */
+.app-card{position:relative;transition:border-color .15s}
+.app-card:hover{border-color:var(--accent)}
+.card-quick-actions{display:none;gap:6px;padding-top:6px}
+.app-card:hover .card-quick-actions{display:flex}
+.quick-btn{flex:1;background:none;border:1px solid var(--border);color:var(--dim);border-radius:6px;padding:5px 6px;cursor:pointer;font-size:.74rem;font-weight:500;transition:border-color .15s,color .15s;font-family:inherit}
+.quick-btn:hover{border-color:var(--accent);color:var(--accent)}
 
 /* Iframe overlay */
 .app-frame{display:none;position:fixed;inset:0;z-index:100;flex-direction:column;background:var(--bg)}
@@ -402,7 +409,18 @@ function showApps(data) {
   if (apps.length === 0) {
     const msg = document.createElement('div');
     msg.className = 'no-apps';
-    msg.textContent = 'No apps assigned to you yet. Contact your administrator.';
+    const ico = document.createElement('div');
+    ico.style.cssText = 'font-size:2rem;margin-bottom:12px;opacity:.5';
+    ico.textContent = '\uD83D\uDCE6';
+    const ttl = document.createElement('div');
+    ttl.style.cssText = 'font-size:.95rem;font-weight:600;color:var(--text);margin-bottom:6px';
+    ttl.textContent = 'No apps yet';
+    const sub = document.createElement('div');
+    sub.style.cssText = 'max-width:280px;margin:0 auto';
+    sub.textContent = 'You haven\u2019t been assigned to any apps. Ask your administrator to grant you access.';
+    msg.appendChild(ico);
+    msg.appendChild(ttl);
+    msg.appendChild(sub);
     list.appendChild(msg);
   }
 
@@ -506,6 +524,23 @@ function showApps(data) {
     envs.appendChild(makeEnvBtn(sandUrl, 'Sandbox', 'dev', a.sand_down, a.sand_status));
 
     card.appendChild(envs);
+
+    // Hover quick actions
+    const qa = document.createElement('div');
+    qa.className = 'card-quick-actions';
+    [
+      ['Open ▸', function() { openApp(prodUrl, a.name + ' (Production)', a.slug, a.has_icon); }],
+      ['Enhance ▸', function() { openEnhModal(a.slug, a.name); }],
+      ['Manage ▸', function() { window.open('/app?slug=' + encodeURIComponent(a.slug), '_blank'); }],
+    ].forEach(function(pair) {
+      var btn = document.createElement('button');
+      btn.className = 'quick-btn';
+      btn.textContent = pair[0];
+      btn.addEventListener('click', function(e) { e.stopPropagation(); pair[1](); });
+      qa.appendChild(btn);
+    });
+    card.appendChild(qa);
+
     return card;
   }
 

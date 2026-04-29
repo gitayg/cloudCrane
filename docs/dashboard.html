@@ -70,6 +70,18 @@ h2{font-size:.85rem;margin:28px 0 10px;letter-spacing:.6px;font-weight:600}
   </div>
 
   <div id="main" style="display:none">
+    <!-- Onboarding checklist (dismissed via localStorage) -->
+    <div id="onboardCard" class="onboard-card" style="display:none">
+      <div style="flex:1">
+        <div class="onboard-hdr">
+          <span style="font-size:1.4rem">🚀</span>
+          <span class="onboard-title">Getting started with AppCrane</span>
+          <button class="onboard-dismiss" onclick="dismissOnboard()" title="Dismiss">&times;</button>
+        </div>
+        <div class="onboard-items" id="onboardItems"></div>
+      </div>
+    </div>
+
     <!-- Server + system stats -->
     <div class="grid" id="serverStats"></div>
 
@@ -130,6 +142,51 @@ function saveKey() {
   setKey(document.getElementById('apiKeyInput').value.trim());
   document.getElementById('setupPanel').style.display = 'none';
   loadAll();
+}
+
+function renderOnboarding(apps, users) {
+  if (localStorage.getItem('cc_onboard_dismissed')) return;
+  const items = [
+    { label: 'AppCrane is running', done: true },
+    { label: 'Create your first app', done: apps.length > 0, link: '/applications' },
+    { label: 'Invite a team member', done: users.length > 1, link: '/users-page' },
+    { label: 'Configure a health check', done: apps.some(a => a.production?.health?.config?.endpoint), link: '/applications' },
+    { label: 'Set environment variables', done: false, hint: 'Open any app → Env Vars' },
+  ];
+  const allDone = items.every(function(i) { return i.done; });
+  if (allDone) return;
+  const card = document.getElementById('onboardCard');
+  const list = document.getElementById('onboardItems');
+  card.style.display = 'block';
+  list.textContent = '';
+  items.forEach(function(item) {
+    const row = document.createElement('div');
+    row.className = 'onboard-item';
+    const check = document.createElement('div');
+    check.className = 'onboard-check' + (item.done ? ' done' : '');
+    check.textContent = item.done ? '\u2713' : '';
+    const text = document.createElement('span');
+    text.className = 'onboard-item-text' + (item.done ? ' done' : '');
+    text.textContent = item.label;
+    if (item.link && !item.done) {
+      const a = document.createElement('a');
+      a.href = item.link;
+      a.style.cssText = 'color:var(--accent);font-size:.78rem;margin-left:auto;text-decoration:none';
+      a.textContent = 'Go \u2192';
+      row.appendChild(check);
+      row.appendChild(text);
+      row.appendChild(a);
+    } else {
+      row.appendChild(check);
+      row.appendChild(text);
+    }
+    list.appendChild(row);
+  });
+}
+
+function dismissOnboard() {
+  localStorage.setItem('cc_onboard_dismissed', '1');
+  document.getElementById('onboardCard').style.display = 'none';
 }
 
 async function apiFetch(path) {
@@ -215,6 +272,9 @@ async function loadAll() {
     const allApps = appsData.apps || [];
     const allUsers = users.users || [];
     const s = health.system;
+
+    // Onboarding checklist
+    renderOnboarding(allApps, allUsers);
 
     // Counts
     const prodLive = allApps.filter(a => a.production?.deploy?.status === 'live').length;

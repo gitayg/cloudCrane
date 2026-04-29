@@ -32,6 +32,15 @@ table{width:100%;border-collapse:collapse;font-size:.85rem}
 th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--border)}
 th{color:var(--dim);font-weight:500}
 .mono{font-family:'SF Mono',Monaco,monospace;font-size:.8rem}
+.breadcrumb{font-size:.78rem;color:var(--dim);padding:7px 24px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:5px}
+.breadcrumb a{color:var(--dim);text-decoration:none}.breadcrumb a:hover{color:var(--text)}
+.deploy-pipeline{display:flex;align-items:stretch;margin:10px 0;border-radius:6px;overflow:hidden;border:1px solid var(--border)}
+.dp-step{display:flex;align-items:center;gap:5px;padding:6px 10px;flex:1;font-size:.73rem;font-weight:600;color:var(--dim);background:var(--surface2);border-right:1px solid var(--border)}
+.dp-step:last-child{border-right:none}
+.dp-step.dp-done{background:#22c55e0d;color:var(--green)}.dp-step.dp-active{background:#3b82f60d;color:var(--accent)}.dp-step.dp-fail{background:#ef44440d;color:var(--red)}
+.dp-dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+.dp-step.dp-active .dp-dot{animation:dp-pulse 1s infinite}
+@keyframes dp-pulse{0%,100%{opacity:1}50%{opacity:.2}}
 .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
 .badge{padding:2px 8px;border-radius:4px;font-size:.75rem;font-weight:600}
 .badge-live{background:#22c55e22;color:var(--green)}.badge-failed{background:#ef444422;color:var(--red)}
@@ -81,12 +90,18 @@ th{color:var(--dim);font-weight:500}
 <div class="topbar">
   <a href="/" class="logo">App<span>Crane</span></a>
   <div class="right">
-    <span id="appName" style="color:var(--dim)"></span>
     <span id="userName" style="color:var(--dim)"></span>
     <a href="/agent-guide">Agent Guide</a>
     <a href="/">Home</a>
   </div>
 </div>
+<nav class="breadcrumb" id="breadcrumb" style="display:none">
+  <a href="/">Apps</a>
+  <span class="breadcrumb-sep">/</span>
+  <span id="bcApp" style="color:var(--text);font-weight:500"></span>
+  <span class="breadcrumb-sep">/</span>
+  <span id="bcEnv" style="color:var(--text)"></span>
+</nav>
 
 <!-- Login -->
 <div id="loginPanel" class="login hidden">
@@ -270,7 +285,14 @@ async function loadApp() {
   // Update toggle UI without calling loadApp again
   document.getElementById('envProd').className = 'env-btn' + (currentEnv === 'production' ? ' active-prod' : '');
   document.getElementById('envSand').className = 'env-btn' + (currentEnv === 'sandbox' ? ' active-sand' : '');
-  document.getElementById('appName').textContent = currentApp;
+
+  // Breadcrumb
+  var bc = document.getElementById('breadcrumb');
+  if (bc) {
+    bc.style.display = 'flex';
+    document.getElementById('bcApp').textContent = currentApp;
+    document.getElementById('bcEnv').textContent = currentEnv === 'production' ? 'Production' : 'Sandbox';
+  }
 
   // App info (admin only)
   if (isAdmin) {
@@ -322,6 +344,39 @@ async function loadApp() {
         deployEl.appendChild(hashSpan);
       }
       deployEl.appendChild(document.createTextNode(' \u2014 ' + (latest.finished_at || latest.started_at)));
+
+      // Deploy pipeline — visible while building
+      var pipeEl = document.getElementById('deployPipeline');
+      if (!pipeEl) {
+        pipeEl = document.createElement('div');
+        pipeEl.id = 'deployPipeline';
+        pipeEl.className = 'deploy-pipeline';
+        document.getElementById('deployInfo').parentNode.insertBefore(pipeEl, document.getElementById('deployInfo').nextSibling);
+      }
+      if (latest.status === 'building') {
+        var log = latest.log || '';
+        var steps = [
+          {label:'Pull',   done:/cloned|pulling|fetched/i.test(log), active:false},
+          {label:'Build',  done:/built|build complete/i.test(log),   active:/building|docker build/i.test(log) || true},
+          {label:'Health', done:/health.*pass|healthy/i.test(log),   active:/health check/i.test(log)},
+          {label:'Live',   done:false, active:false},
+        ];
+        var firstActive = steps.findIndex(function(s) { return !s.done; });
+        steps.forEach(function(s, i) { if (i === firstActive) s.active = true; });
+        pipeEl.style.display = 'flex';
+        pipeEl.textContent = '';
+        steps.forEach(function(s) {
+          var div = document.createElement('div');
+          div.className = 'dp-step' + (s.done ? ' dp-done' : s.active ? ' dp-active' : '');
+          var dot = document.createElement('div');
+          dot.className = 'dp-dot';
+          div.appendChild(dot);
+          div.appendChild(document.createTextNode(s.label));
+          pipeEl.appendChild(div);
+        });
+      } else {
+        pipeEl.style.display = 'none';
+      }
     } else {
       document.getElementById('deployInfo').textContent = 'No deployments yet';
     }
@@ -685,7 +740,7 @@ function toggleLevel(level) {
   applyLogFilter();
 }
 
-// Init
+// Init — remove stale appName display (breadcrumb replaces it)
 if (KEY) { init(); } else { document.getElementById('loginPanel').classList.remove('hidden'); }
 </script>
 
