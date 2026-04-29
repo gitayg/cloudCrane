@@ -360,20 +360,49 @@ myapp/
   dist/                   ← built frontend (after npm run build)
 ```
 
-Or with separate frontend/backend directories:
+Or with separate frontend/backend directories — set `be.workdir` and `fe.workdir`
+in `deployhub.json` so AppCrane knows where to install deps and run the entry:
 ```
 myapp/
-  deployhub.json
+  deployhub.json     # must declare be.workdir + fe.workdir
   frontend/
-    package.json
+    package.json     # installed under /app/frontend in the container
     src/
     dist/
   backend/
-    package.json
-    server.js
+    package.json     # installed under /app/backend; container CWD is here
+    server.js        # entry runs from /app/backend
   data/
   .env.example
 ```
+
+**Required** `deployhub.json` for the monorepo layout above:
+```jsonc
+{
+  "name": "myapp",
+  "version": "1.0.0",
+  "be": {
+    "workdir": "backend",         // where the backend's package.json lives
+    "entry": "node server.js",    // run inside /app/backend
+    "health": "/health"
+  },
+  "fe": {
+    "workdir": "frontend",        // where the frontend's package.json lives
+    "build": "npm run build"      // runs inside /app/frontend
+  }
+}
+```
+
+Without these `workdir` fields, AppCrane only `npm install`s at the repo root —
+your subdirectory `package.json` files are ignored and your container will
+crash at runtime with `Cannot find package 'X'`. Optional related fields:
+
+| Field | Default | Purpose |
+|---|---|---|
+| `be.install` | `npm ci --omit=dev` (falls back to `npm install`) | Custom backend install command |
+| `fe.install` | `npm ci` (devDeps included for build) | Custom frontend install command |
+| `be.workdir` | `.` (repo root) | Path to backend's package.json + entry |
+| `fe.workdir` | `.` (repo root) | Path to frontend's package.json + build |
 
 ### What happens during deploy
 
@@ -680,6 +709,8 @@ You have an API key. Here's the full flow to build and deploy an app:
 | Health check fails | App not starting correctly | Check deploy log, ensure `app.listen(process.env.PORT \|\| 3000)` |
 | Health check 404 | Wrong health endpoint | Fix `be.health` in deployhub.json or `PUT /health/ENV` config |
 | App crashes after deploy | Check deploy log | `GET /api/apps/SLUG/deployments/ENV/ID/log` |
+| Container restart-loops with `Cannot find package 'X'` | App is a monorepo (subdir `package.json`) but `be.workdir`/`fe.workdir` not set | Add `be.workdir` (and `fe.workdir` if applicable) to `deployhub.json` so AppCrane installs deps in the right directory |
+| Build succeeds but runtime fails on missing deps | Same as above — flat-layout install only ran at root | Add `be.workdir` pointing at the backend folder |
 | Env var missing | Not set for this environment | `PUT /api/apps/SLUG/env/ENV` with the missing var |
 | Database lost after deploy | DB file not in data/ directory | Move SQLite to `data/app.db`, update DATABASE_URL |
 | Can't deploy (403) | Wrong API key or not assigned | Check with admin, use app user key not admin key |
