@@ -1920,8 +1920,27 @@ async function _pollPlanJob() {
     if (d.status === 'done' || d.status === 'failed') {
       _stopPlanJobPolling();
       refreshJobsBadge();
-      if (d.status === 'done') {
-        // Give the deploy a moment to go live, then reload the iframe
+      if (d.status === 'done' && d.phase === 'revise_plan' && d.enhancement_id) {
+        // Revised plan is ready — fetch and render it for review
+        fetch(API + '/api/plan/' + d.enhancement_id, {
+          headers: { 'Authorization': 'Bearer ' + sessionToken },
+        }).then(function(r) { return r.ok ? r.json() : null; }).then(function(enh) {
+          if (!enh || !enh.plan) return;
+          _planHasPlan = true;
+          _planBusy = false;
+          document.getElementById('planSendBtn').textContent = 'Refine';
+          document.getElementById('planSendBtn').disabled = true;
+          document.getElementById('planInput').placeholder = 'Send feedback to refine the plan...';
+          var rendered = _renderPlan(enh.plan);
+          _appendPlanMsg('assistant', rendered);
+          var buildBtn = document.getElementById('planBuildBtn');
+          buildBtn.textContent = _userRole === 'admin' ? '🔨 Build' : '📤 Submit for Review';
+          buildBtn.disabled = false;
+          document.getElementById('planBuildRow').style.display = 'flex';
+          document.getElementById('planMessages').scrollTop = document.getElementById('planMessages').scrollHeight;
+        }).catch(function() {});
+      } else if (d.status === 'done') {
+        // Code deploy — give it a moment then reload the iframe
         setTimeout(function() {
           var f = document.getElementById('frameIframe');
           if (f && f.src && f.src !== 'about:blank') { f.src = f.src; }

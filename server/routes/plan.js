@@ -248,6 +248,7 @@ router.get('/job/:jobId', (req, res) => {
   const job = db.prepare(`
     SELECT j.id, j.phase, j.status, j.output_json, j.cost_tokens, j.cost_usd_cents,
            j.error_message, j.created_at, j.started_at, j.finished_at,
+           j.enhancement_id,
            er.user_id, er.message as enhancement_message, er.app_slug
     FROM enhancement_jobs j
     JOIN enhancement_requests er ON er.id = j.enhancement_id
@@ -273,6 +274,7 @@ router.get('/job/:jobId', (req, res) => {
     finished_at: job.finished_at,
     enhancement_message: job.enhancement_message,
     app_slug: job.app_slug,
+    enhancement_id: job.enhancement_id,
   });
 });
 
