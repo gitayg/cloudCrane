@@ -302,12 +302,13 @@ router.get('/anthropic-key', requireAdmin, async (req, res) => {
       const { default: Anthropic } = await import('@anthropic-ai/sdk');
       const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
       await client.messages.create({ model: 'claude-haiku-4-5-20251001', max_tokens: 1, messages: [{ role: 'user', content: 'hi' }] });
-      return res.json({ configured: true, source: inFile ? 'file' : 'env', valid: true });
+      return res.json({ configured: true, source: inFile ? 'file' : 'env', suffix: process.env.ANTHROPIC_API_KEY.slice(-4), valid: true });
     } catch (err) {
-      return res.json({ configured: true, source: inFile ? 'file' : 'env', valid: false, error: err.message });
+      return res.json({ configured: true, source: inFile ? 'file' : 'env', suffix: process.env.ANTHROPIC_API_KEY.slice(-4), valid: false, error: err.message });
     }
   }
-  res.json({ configured: true, source: inFile ? 'file' : 'env' });
+  const suffix = process.env.ANTHROPIC_API_KEY.slice(-4);
+  res.json({ configured: true, source: inFile ? 'file' : 'env', suffix });
 });
 
 /**

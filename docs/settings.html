@@ -113,7 +113,8 @@ async function loadSettings() {
   const aiStatusText = document.createElement('span');
   aiStatusText.id = 'aiStatusText';
   if (anthropicStatus.source === 'env') {
-    aiStatusText.textContent = 'Configured — via ANTHROPIC_API_KEY environment variable';
+    const suffix = anthropicStatus.suffix ? ` (ends in ••••${anthropicStatus.suffix})` : '';
+    aiStatusText.textContent = `Configured — via ANTHROPIC_API_KEY environment variable${suffix}`;
   } else if (anthropicStatus.configured) {
     aiStatusText.textContent = 'Configured — stored in .env file';
   } else {
