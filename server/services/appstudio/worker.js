@@ -534,4 +534,21 @@ async function handleOpenPr(job) {
   `).run(`\n[${new Date().toISOString()}] PR #${prNumber} merged: ${mergeData.sha || ''}\n`, enh.id);
 
   log.info(`AppStudio: PR #${prNumber} merged for enh #${enh.id}`);
+  onLog?.(`[studio] ✅ Merged — triggering production deploy…`);
+
+  // Auto-deploy to production from the default branch after merge
+  try {
+    const { deployApp } = await import('../deployer.js');
+    const { getPortsForSlot } = await import('../portAllocator.js');
+    const ports = getPortsForSlot(app.slot);
+    const deployResult = db.prepare(`
+      INSERT INTO deployments (app_id, env, status, log, commit_hash)
+      VALUES (?, 'production', 'pending', ?, ?)
+    `).run(app.id, `AppStudio enhancement #${enh.id} — auto deploy after merge`, mergeData.sha || 'appstudio');
+    await deployApp(deployResult.lastInsertRowid, app, 'production', ports);
+    onLog?.(`[studio] ✅ Production deploy complete`);
+  } catch (err) {
+    log.warn(`AppStudio: auto production deploy failed for enh #${enh.id}: ${err.message}`);
+    onLog?.(`[studio] ⚠️ Production deploy failed: ${err.message} — deploy manually from the dashboard`);
+  }
 }

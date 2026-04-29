@@ -90,9 +90,10 @@ async function cloneForCode(dir, app, baseBranch, branchName, onLog) {
   onLog?.(`[studio:git] Creating branch ${branchName}…`);
   execFileSync('git', ['-C', workspaceDir, 'checkout', '-b', branchName], { stdio: 'pipe' });
 
-  // Make all workspace files writable by the container's studio user.
-  // chmod works regardless of who runs AppCrane; chown requires root.
-  try { execFileSync('chmod', ['-R', 'a+rw', workspaceDir], { stdio: 'pipe' }); } catch (_) {}
+  // Make workspace fully accessible to the container's studio user.
+  // chmod 777 works regardless of who runs AppCrane (no root needed) and
+  // ensures directory execute bits are set so the studio user can traverse all paths.
+  try { execFileSync('chmod', ['-R', '777', workspaceDir], { stdio: 'pipe' }); } catch (_) {}
   try { execFileSync('chown', ['-R', '1000:1000', workspaceDir], { stdio: 'pipe' }); } catch (_) {}
 
   writeFileSync(join(workspaceDir, 'CLAUDE.md'), buildWorkspaceClaude(), { mode: 0o644 }); // nosemgrep
@@ -322,7 +323,7 @@ export async function generateCode({ jobId, app, enhancementId, plan, summary, a
       if (existsSync(sentinelPath)) {
         codingDoneHandled = true;
         clearInterval(sentinelPoll);
-        onLog?.('[studio] Sentinel detected — handing off to host for git operations');
+        onLog?.('[studio] Coding complete — committing and pushing…');
         try {
           await onCodingDone?.(workspaceDir, branchName);
         } catch (err) {
