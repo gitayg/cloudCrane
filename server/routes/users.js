@@ -70,6 +70,10 @@ router.delete('/:id', requireAdmin, auditMiddleware('user-delete'), (req, res) =
   const db = getDb();
   const userId = parseInt(req.params.id);
 
+  if (userId === 1) {
+    throw new AppError('Cannot delete the owner account', 400, 'OWNER_PROTECTED');
+  }
+
   if (userId === req.user.id) {
     throw new AppError('Cannot delete yourself', 400, 'SELF_DELETE');
   }

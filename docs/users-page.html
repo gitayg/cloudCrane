@@ -134,8 +134,13 @@ async function loadUsers() {
       const nameInput = document.createElement('input'); nameInput.className = 'editable'; nameInput.value = u.name || '';
       nameInput.addEventListener('change', function() { updateField(u.id, 'name', this.value); });
       tdName.appendChild(nameInput);
+      const isOwner = u.id === 1;
+      if (isOwner) {
+        const badge = document.createElement('span'); badge.style.cssText = 'font-size:10px;background:#3b82f622;border:1px solid var(--accent);border-radius:3px;padding:1px 5px;color:var(--accent);vertical-align:middle;margin-left:4px';
+        badge.textContent = 'OWNER'; tdName.appendChild(badge);
+      }
       if (u.sso_provider) {
-        const badge = document.createElement('span'); badge.style.cssText = 'font-size:10px;background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:1px 5px;color:var(--dim);vertical-align:middle';
+        const badge = document.createElement('span'); badge.style.cssText = 'font-size:10px;background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:1px 5px;color:var(--dim);vertical-align:middle;margin-left:4px';
         badge.textContent = u.sso_provider.toUpperCase(); tdName.appendChild(badge);
       }
       const tdEmail = tr.insertCell(); const emailInput = document.createElement('input'); emailInput.className = 'editable'; emailInput.value = u.email || '';
@@ -149,8 +154,11 @@ async function loadUsers() {
       const pwBtn = document.createElement('button'); pwBtn.className = 'btn'; pwBtn.style.cssText = 'font-size:10px;padding:1px 6px'; pwBtn.textContent = 'set';
       pwBtn.addEventListener('click', () => setPassword(u.id)); tdPw.appendChild(pwBtn);
       const tdLogin = tr.insertCell(); tdLogin.appendChild(fmtLastLogin(u.last_login_at));
-      const tdDel = tr.insertCell(); const delBtn = document.createElement('button'); delBtn.className = 'btn btn-red'; delBtn.style.cssText = 'font-size:11px;padding:2px 8px'; delBtn.textContent = 'Delete';
-      delBtn.addEventListener('click', () => deleteUser(u.id, u.name)); tdDel.appendChild(delBtn);
+      const tdDel = tr.insertCell();
+      if (!isOwner) {
+        const delBtn = document.createElement('button'); delBtn.className = 'btn btn-red'; delBtn.style.cssText = 'font-size:11px;padding:2px 8px'; delBtn.textContent = 'Delete';
+        delBtn.addEventListener('click', () => deleteUser(u.id, u.name)); tdDel.appendChild(delBtn);
+      }
     }
     usersEl.textContent = ''; usersEl.appendChild(tbl);
   } else {
