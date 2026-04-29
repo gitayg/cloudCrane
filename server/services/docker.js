@@ -65,13 +65,17 @@ export async function buildImage({ slug, env, contextDir, commitHash, appBasePat
 
   return new Promise((resolve, reject) => {
     const child = spawn('docker', args, { stdio: 'pipe' });
-    let stderrBuf = '';
+    let outputBuf = '';
 
     const emit = (line) => { if (line.trim()) onLog?.(line); };
-    child.stdout.on('data', (c) => c.toString().split('\n').forEach(emit));
+    child.stdout.on('data', (c) => {
+      const s = c.toString();
+      outputBuf += s;
+      s.split('\n').forEach(emit);
+    });
     child.stderr.on('data', (c) => {
       const s = c.toString();
-      stderrBuf += s;
+      outputBuf += s;
       s.split('\n').forEach(emit);
     });
 
@@ -83,7 +87,7 @@ export async function buildImage({ slug, env, contextDir, commitHash, appBasePat
     child.on('error', (err) => { clearTimeout(timer); reject(err); });
     child.on('close', (code) => {
       clearTimeout(timer);
-      if (code !== 0) return reject(new Error(`docker build failed: ${stderrBuf.slice(-400)}`));
+      if (code !== 0) return reject(new Error(`docker build failed: ${outputBuf.slice(-800)}`));
       resolve(tag);
     });
   });
