@@ -159,7 +159,7 @@ try {
 
 // Push
 console.log('[studio] Pushing branch ' + branch + '…');
-run('git', ['push', '-u', 'origin', branch]);
+run('git', ['push', '-u', '--force-with-lease', 'origin', branch]);
 console.log('[studio] Done — ' + branch);
 `;
 }
