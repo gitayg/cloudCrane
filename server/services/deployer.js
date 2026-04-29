@@ -4,6 +4,7 @@ import { join, resolve } from 'path';
 import { getDb } from '../db.js';
 import { decrypt } from './encryption.js';
 import log from '../utils/logger.js';
+import { invalidateCache } from './appstudio/codebaseCache.js';
 
 function parseResourceLimits(raw) {
   try {
@@ -259,6 +260,7 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
       UPDATE deployments SET status = 'live', version = ?, commit_hash = ?, release_path = ?, finished_at = datetime('now'), log = ?
       WHERE id = ?
     `).run(manifest.version || 'unknown', commitHash, releaseDir, deployLog.join('\n'), deployId);
+    if (env === 'production') invalidateCache(app.slug);
 
     // 9. Persist health endpoint from manifest
     if (manifest.be?.health) {

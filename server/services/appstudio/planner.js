@@ -3,6 +3,7 @@ import { execFileSync } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import log from '../../utils/logger.js';
+import { getOrBuildCache } from './codebaseCache.js';
 
 let _client = null;
 function client() {
@@ -53,54 +54,59 @@ Guidelines:
 - Respect any constraints in the operator's per-app context notes.
 - Estimate tokens conservatively (the budget will be enforced).`;
 
-function getRepoTree(repoDir) {
-  try {
-    return execFileSync('git', ['ls-tree', '-r', '--name-only', 'HEAD'], {
-      cwd: repoDir, encoding: 'utf8', timeout: 10000, stdio: 'pipe',
-    }).trim();
-  } catch (_) {
-    return '(could not read repo tree)';
-  }
-}
-
-function getTestFiles(repoDir, maxFiles = 6) {
-  try {
-    const all = execFileSync('git', ['ls-files'], {
-      cwd: repoDir, encoding: 'utf8', timeout: 10000, stdio: 'pipe',
-    }).trim().split('\n').filter(Boolean);
-    return all.filter(f =>
+function getTestFiles(fileTree, maxFiles = 6) {
+  return fileTree.split('\n').filter(f =>
+    f && (
       /\.(test|spec)\.(js|ts|jsx|tsx|mjs|cjs)$/.test(f) ||
       /\/(tests?|__tests__|spec)\//.test(f)
-    ).slice(0, maxFiles);
-  } catch (_) {
-    return [];
-  }
+    )
+  ).slice(0, maxFiles);
 }
 
-function grepRelevantFiles(repoDir, keywords, maxFiles = 8) {
+function grepRelevantFiles(repoDir, filesMap, keywords, maxFiles = 8) {
   const files = new Set();
+  const cachedPaths = Object.keys(filesMap);
+
+  // Search cached content first (fast, no disk I/O)
   for (const kw of keywords) {
     if (!kw || kw.length < 3) continue;
-    try {
-      const out = execFileSync('grep', ['-rl', '--include=*.js', '--include=*.ts', '--include=*.jsx', '--include=*.tsx', '--include=*.json', '--include=*.sql', kw, repoDir], {
-        encoding: 'utf8', timeout: 10000, stdio: 'pipe',
-      });
-      for (const f of out.trim().split('\n')) {
-        if (f && !f.includes('node_modules') && !f.includes('.git/')) files.add(f);
-      }
-    } catch (_) {}
+    const kwLower = kw.toLowerCase();
+    for (const p of cachedPaths) {
+      if ((filesMap[p] || '').toLowerCase().includes(kwLower)) files.add(p);
+      if (files.size >= maxFiles) break;
+    }
     if (files.size >= maxFiles) break;
   }
+
+  // Fall back to grep for files not in cache
+  if (files.size < maxFiles) {
+    for (const kw of keywords) {
+      if (!kw || kw.length < 3) continue;
+      try {
+        const out = execFileSync('grep', [
+          '-rl', '--include=*.js', '--include=*.ts', '--include=*.jsx',
+          '--include=*.tsx', '--include=*.json', '--include=*.sql', kw, repoDir,
+        ], { encoding: 'utf8', timeout: 10000, stdio: 'pipe' });
+        for (const f of out.trim().split('\n')) {
+          if (f && !f.includes('node_modules') && !f.includes('.git/')) {
+            // Store relative path
+            const rel = f.startsWith(repoDir) ? f.slice(repoDir.length + 1) : f;
+            files.add(rel);
+          }
+        }
+      } catch (_) {}
+      if (files.size >= maxFiles) break;
+    }
+  }
+
   return [...files].slice(0, maxFiles);
 }
 
-function readFileSafe(path, maxBytes = 20000) {
-  try {
-    const content = readFileSync(path, 'utf8');
-    return content.length > maxBytes ? content.slice(0, maxBytes) + '\n... (truncated)' : content;
-  } catch (_) {
-    return '(could not read file)';
-  }
+function readFileSafe(absPath, cachedContent, maxBytes = 20000) {
+  const content = cachedContent ?? (() => {
+    try { return readFileSync(absPath, 'utf8'); } catch (_) { return '(could not read file)'; }
+  })();
+  return content.length > maxBytes ? content.slice(0, maxBytes) + '\n... (truncated)' : content;
 }
 
 function extractKeywords(text) {
@@ -131,31 +137,37 @@ function extractJsonBlock(text) {
   return null;
 }
 
-export async function planEnhancement({ request, repoDir, agentContext, priorComments, onChunk, onTokens }) {
-  const repoTree = getRepoTree(repoDir);
+export async function planEnhancement({ appSlug, request, repoDir, agentContext, priorComments, onChunk, onTokens }) {
+  const { fileTree, filesMap, gitHash, fromCache, builtAt } = getOrBuildCache(appSlug, repoDir);
+
   const keywords = extractKeywords(request + ' ' + (priorComments || ''));
-  const relevantPaths = grepRelevantFiles(repoDir, keywords);
-  const fileContents = relevantPaths
-    .map(p => `### ${p}\n\`\`\`\n${readFileSafe(p)}\n\`\`\``)
+  const relevantRelPaths = grepRelevantFiles(repoDir, filesMap, keywords);
+  const fileContents = relevantRelPaths
+    .map(rel => `### ${rel}\n\`\`\`\n${readFileSafe(join(repoDir, rel), filesMap[rel])}\n\`\`\``)
     .join('\n\n');
 
-  const testPaths = getTestFiles(repoDir);
+  const testPaths = getTestFiles(fileTree);
   const testContents = testPaths
-    .map(p => `### ${p}\n\`\`\`\n${readFileSafe(join(repoDir, p), 6000)}\n\`\`\``)
+    .map(p => `### ${p}\n\`\`\`\n${readFileSafe(join(repoDir, p), filesMap[p], 6000)}\n\`\`\``)
     .join('\n\n');
+
+  const cacheNote = fromCache
+    ? `Context snapshot: git ${gitHash?.slice(0, 8)} (cached ${builtAt?.slice(0, 16)} UTC — no changes since)`
+    : `Context snapshot: git ${gitHash?.slice(0, 8)} (freshly indexed)`;
 
   const userContent = [
     `## Enhancement request\n\n${request}`,
     priorComments ? `## Prior reviewer feedback\n\n${priorComments}` : '',
-    `## Repo tree\n\`\`\`\n${repoTree}\n\`\`\``,
+    `## Repo tree\n\`\`\`\n${fileTree || '(could not read repo tree)'}\n\`\`\``,
     fileContents ? `## Relevant source files\n\n${fileContents}` : '',
     testContents
       ? `## Existing test files (follow these patterns)\n\n${testContents}`
       : '## Existing test files\n\n(none found — create the first test file)',
     agentContext ? `## Per-app context (from operator)\n\n${agentContext}` : '',
+    `## Codebase context metadata\n\n${cacheNote}`,
   ].filter(Boolean).join('\n\n---\n\n');
 
-  log.info(`AppStudio plan: ${MODEL}, ${relevantPaths.length} files in context`);
+  log.info(`AppStudio plan: ${MODEL}, ${relevantRelPaths.length} files, cache=${fromCache ? 'HIT' : 'MISS'}`);
 
   let fullText = '';
   let streamInputTokens = 0, streamOutputTokens = 0;
