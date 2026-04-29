@@ -98,7 +98,7 @@ router.post('/login', (req, res) => {
   // Get all apps with this user's role and health state
   const isAdmin = user.role === 'admin';
   const apps = db.prepare(`
-    SELECT a.slug, a.name, a.domain, a.description, a.public_access,
+    SELECT a.slug, a.name, a.domain, a.description, a.public_access, a.category,
       CASE WHEN a.public_access THEN 'viewer' ELSE COALESCE(aur.app_role, 'none') END as app_role,
       hp.is_down as prod_down, hp.last_status as prod_status,
       hs.is_down as sand_down, hs.last_status as sand_status
@@ -291,7 +291,7 @@ router.get('/me', (req, res) => {
   // Get all apps with roles and health state
   const isAdmin = session.role === 'admin';
   const apps = db.prepare(`
-    SELECT a.slug, a.name, a.domain, a.description, a.public_access,
+    SELECT a.slug, a.name, a.domain, a.description, a.public_access, a.category,
       CASE WHEN a.public_access THEN 'viewer' ELSE COALESCE(aur.app_role, 'none') END as role,
       hp.is_down as prod_down, hp.last_status as prod_status,
       hs.is_down as sand_down, hs.last_status as sand_status

@@ -517,13 +517,16 @@ function showApps(data) {
   var isFirst = true;
 
   function renderGroup(title, groupApps) {
+    if (!isFirst) {
+      const hr = document.createElement('hr');
+      hr.style.cssText = 'border:none;border-top:1px solid var(--border,#333);margin:28px 0 20px';
+      list.appendChild(hr);
+    }
     if (title) {
       const titleEl = document.createElement('div');
       titleEl.className = 'section-title';
-      if (!isFirst) titleEl.style.marginTop = '28px';
       titleEl.textContent = title;
       list.appendChild(titleEl);
-      isFirst = false;
     }
     const g = document.createElement('div');
     g.className = 'apps-grid';
