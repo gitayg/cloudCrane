@@ -100,6 +100,10 @@ th{color:var(--dim);font-weight:500}
 
   <!-- Env vars -->
   <h2>Environment Variables</h2>
+  <div id="envRedeployBanner" style="display:none;background:#eab30820;border:1px solid #eab30860;border-radius:8px;padding:10px 14px;margin-bottom:10px;display:none;align-items:center;gap:12px;flex-wrap:wrap">
+    <span style="color:var(--yellow);font-size:.85rem;flex:1">&#9888; Env var changes won't take effect until the app is redeployed.</span>
+    <button class="btn btn-sm" style="background:var(--yellow);color:#000;font-weight:700" onclick="deploy()">Redeploy Now</button>
+  </div>
   <div class="card">
     <div id="envVars">Loading...</div>
     <div class="add-row">
@@ -400,6 +404,7 @@ async function deploy() {
   showMsg('Deploying...', true);
   const data = await apiFetch('/api/apps/' + currentApp + '/deploy/' + currentEnv, { method: 'POST' });
   showMsg(data.message || 'Deploy triggered', true);
+  document.getElementById('envRedeployBanner').style.display = 'none';
   setTimeout(loadApp, 3000);
 }
 
@@ -417,6 +422,11 @@ async function rollback() {
   setTimeout(loadApp, 2000);
 }
 
+function showEnvRedeployBanner() {
+  const b = document.getElementById('envRedeployBanner');
+  b.style.display = 'flex';
+}
+
 async function addEnvVar() {
   const key = document.getElementById('newKey').value.trim();
   const val = document.getElementById('newVal').value;
@@ -426,6 +436,7 @@ async function addEnvVar() {
   showMsg(data.message || 'Added', true);
   document.getElementById('newKey').value = '';
   document.getElementById('newVal').value = '';
+  showEnvRedeployBanner();
   loadApp();
 }
 
@@ -433,6 +444,7 @@ async function delEnvVar(key) {
   if (!confirm('Delete ' + key + '?')) return;
   await apiFetch('/api/apps/' + currentApp + '/env/' + currentEnv + '/' + key, { method: 'DELETE' });
   showMsg('Deleted ' + key, true);
+  showEnvRedeployBanner();
   loadApp();
 }
 
