@@ -189,19 +189,13 @@ function AppIcon({ slug, name, onClick }: { slug: string; name: string; onClick?
 
   useEffect(() => {
     let cancelled = false
-    let blobUrl: string | null = null
-    fetch(`/api/apps/${slug}/icon`)
-      .then(r => r.ok ? r.blob() : null)
-      .then(b => {
-        if (cancelled || !b) return
-        blobUrl = URL.createObjectURL(b)
-        setIconUrl(blobUrl)
+    fetch(`/api/apps/${slug}/icon`, { method: 'HEAD' })
+      .then(r => {
+        if (cancelled || !r.ok) return
+        setIconUrl(`/api/apps/${slug}/icon`)
       })
       .catch(() => {})
-    return () => {
-      cancelled = true
-      if (blobUrl) URL.revokeObjectURL(blobUrl)
-    }
+    return () => { cancelled = true }
   }, [slug])
 
   return (

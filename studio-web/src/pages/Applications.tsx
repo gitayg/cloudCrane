@@ -101,11 +101,10 @@ export function Applications() {
 
   function fetchIcons(appList: App[]) {
     appList.forEach(app => {
-      fetch(`/api/apps/${app.slug}/icon`)
-        .then(r => r.ok ? r.blob() : null)
-        .then(b => {
-          if (!b) return
-          setIconUrls(prev => ({ ...prev, [app.slug]: URL.createObjectURL(b) }))
+      fetch(`/api/apps/${app.slug}/icon`, { method: 'HEAD' })
+        .then(r => {
+          if (!r.ok) return
+          setIconUrls(prev => ({ ...prev, [app.slug]: `/api/apps/${app.slug}/icon` }))
         })
         .catch(() => {})
     })
@@ -115,7 +114,7 @@ export function Applications() {
     appList.forEach(app => {
       ['production', 'sandbox'].forEach(env => {
         adminApi
-          .get<{ version?: string }>(`/api/apps/${app.slug}/version/${env}`)
+          .get<{ version?: string }>(`/api/apps/${app.slug}/live-version/${env}`)
           .then(r => {
             setVersions(prev => ({
               ...prev,
