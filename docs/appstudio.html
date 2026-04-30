@@ -103,23 +103,24 @@
 </style>
 </head>
 <body>
+<div class="page-body">
+<div class="page-content"><div class="container">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    <h2 style="margin:0">AppStudio</h2>
+    <span style="color:var(--dim);font-size:.8rem">AI-powered enhancement pipeline</span>
+  </div>
+  <div class="tabs">
+    <div class="tab active" data-tab="requests">Requests</div>
+    <div class="tab" data-tab="library">Library</div>
+    <div class="tab" data-tab="studio">Studio</div>
+  </div>
+  <div id="tabContent"></div>
+</div></div>
+</div>
 <script src="/docs/shared.js"></script>
 <script>
+document.querySelector('.page-body').insertAdjacentHTML('afterbegin', sidebar('appstudio'));
 if (!checkAuth()) throw 'auth';
-document.body.insertAdjacentHTML('beforeend',
-  '<div class="page-body">' + sidebar('appstudio') +
-  '<div class="page-content"><div class="container">' +
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
-      '<h2 style="margin:0">AppStudio</h2>' +
-      '<span style="color:var(--dim);font-size:.8rem">AI-powered enhancement pipeline</span>' +
-    '</div>' +
-    '<div class="tabs">' +
-      '<div class="tab active" data-tab="requests">Requests</div>' +
-      '<div class="tab" data-tab="library">Library</div>' +
-      '<div class="tab" data-tab="studio">Studio</div>' +
-    '</div>' +
-    '<div id="tabContent"></div>' +
-  '</div></div></div>');
 loadVersion(); loadUserInfo();
 
 let activeTab = 'requests';

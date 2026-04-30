@@ -266,35 +266,84 @@ function showPromptModal(title, prompt) {
   overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
 }
 
+function _buildLoginOverlay() {
+  function el(tag, css, text) {
+    var e = document.createElement(tag);
+    if (css) e.style.cssText = css;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function btn(id, label, active) {
+    var b = el('button', 'flex:1;padding:10px;border:none;cursor:pointer;font-size:.85rem;font-weight:600;' +
+      (active ? 'background:var(--accent);color:#fff' : 'background:var(--surface2);color:var(--dim)'));
+    b.id = id; b.textContent = label;
+    return b;
+  }
+  function input(id, type, placeholder) {
+    var i = el('input', 'background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:6px;width:100%;margin-bottom:8px;font-size:14px;box-sizing:border-box');
+    i.id = id; i.type = type; i.placeholder = placeholder;
+    return i;
+  }
+
+  var wrap = el('div', 'position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:500');
+  var box = el('div', 'background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:32px;width:100%;max-width:440px');
+
+  var h2 = el('h2', 'margin:0 0 4px;font-size:1.3rem', 'Sign In');
+  var sub = el('p', 'color:var(--dim);margin-bottom:20px;font-size:.9rem', 'Choose your login method');
+  var errDiv = el('div', 'display:none;background:#ef444418;border:1px solid #ef444444;color:var(--red);padding:8px;border-radius:6px;margin-bottom:12px;font-size:.85rem');
+  errDiv.id = 'loginError';
+
+  var tabs = el('div', 'display:flex;margin-bottom:20px;border:1px solid var(--border);border-radius:6px;overflow:hidden');
+  var tabUser = btn('tabUser', 'User Login', true);
+  var tabKey = btn('tabKey', 'Admin Key', false);
+  tabs.appendChild(tabUser); tabs.appendChild(tabKey);
+
+  var userForm = el('div');
+  userForm.id = 'userForm';
+  var userNote = el('p', 'color:var(--dim);font-size:.8rem;margin-bottom:12px', 'Sign in to access your assigned apps');
+  var loginUser = input('loginUser', 'text', 'Email or username');
+  loginUser.setAttribute('autofocus', '');
+  var loginPass = input('loginPass', 'password', 'Password');
+  loginPass.style.marginBottom = '12px';
+  var signInBtn = el('button', 'width:100%;padding:10px');
+  signInBtn.className = 'btn btn-accent'; signInBtn.textContent = 'Sign In';
+  userForm.appendChild(userNote); userForm.appendChild(loginUser);
+  userForm.appendChild(loginPass); userForm.appendChild(signInBtn);
+
+  var keyForm = el('div', 'display:none');
+  keyForm.id = 'keyForm';
+  var keyNote = el('p', 'color:var(--dim);font-size:.8rem;margin-bottom:12px', 'For AppCrane administrators only');
+  var keyInput = input('keyInput', 'password', 'dhk_admin_...');
+  keyInput.style.marginBottom = '12px';
+  var keySignInBtn = el('button', 'width:100%;padding:10px');
+  keySignInBtn.className = 'btn btn-accent'; keySignInBtn.textContent = 'Sign In with Admin Key';
+  keyForm.appendChild(keyNote); keyForm.appendChild(keyInput); keyForm.appendChild(keySignInBtn);
+
+  box.appendChild(h2); box.appendChild(sub); box.appendChild(errDiv);
+  box.appendChild(tabs); box.appendChild(userForm); box.appendChild(keyForm);
+  wrap.appendChild(box);
+
+  signInBtn.addEventListener('click', function() { window.doPassLogin && window.doPassLogin(); });
+  keySignInBtn.addEventListener('click', function() { window.doKeyLogin && window.doKeyLogin(); });
+  loginPass.addEventListener('keydown', function(e) { if (e.key === 'Enter') { window.doPassLogin && window.doPassLogin(); } });
+  keyInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') { window.doKeyLogin && window.doKeyLogin(); } });
+  loginUser.addEventListener('keydown', function(e) { if (e.key === 'Enter') { loginPass.focus(); } });
+  tabUser.addEventListener('click', function() { window.showTab && window.showTab('user'); });
+  tabKey.addEventListener('click', function() { window.showTab && window.showTab('key'); });
+
+  return wrap;
+}
+
 function checkAuth() {
   if (!KEY) {
-    document.body.innerHTML =
-      '<div style="background:var(--surface);border-bottom:1px solid var(--border);padding:12px 24px"><span style="font-weight:700;font-size:1.05rem">App<span style="color:var(--accent)">Crane</span></span></div>' +
-      '<div style="max-width:440px;margin:60px auto;padding:0 20px">' +
-        '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:32px">' +
-          '<h2 style="margin:0 0 4px;font-size:1.3rem">Sign In</h2>' +
-          '<p style="color:var(--dim);margin-bottom:20px;font-size:.9rem">Choose your login method</p>' +
-          '<div id="loginError" style="display:none;background:#ef444418;border:1px solid #ef444444;color:var(--red);padding:8px;border-radius:6px;margin-bottom:12px;font-size:.85rem"></div>' +
-
-          '<div style="display:flex;margin-bottom:20px;border:1px solid var(--border);border-radius:6px;overflow:hidden">' +
-            '<button onclick="showTab(\'user\')" id="tabUser" style="flex:1;padding:10px;border:none;cursor:pointer;font-size:.85rem;font-weight:600;background:var(--accent);color:#fff">User Login</button>' +
-            '<button onclick="showTab(\'key\')" id="tabKey" style="flex:1;padding:10px;border:none;cursor:pointer;font-size:.85rem;font-weight:600;background:var(--surface2);color:var(--dim)">Admin Key</button>' +
-          '</div>' +
-
-          '<div id="userForm">' +
-            '<p style="color:var(--dim);font-size:.8rem;margin-bottom:12px">Sign in to access your assigned apps</p>' +
-            '<input type="text" id="loginUser" placeholder="Email or username" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:6px;width:100%;margin-bottom:8px;font-size:14px" autofocus onkeydown="if(event.key===\'Enter\')document.getElementById(\'loginPass\').focus()">' +
-            '<input type="password" id="loginPass" placeholder="Password" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:6px;width:100%;margin-bottom:12px;font-size:14px" onkeydown="if(event.key===\'Enter\')doPassLogin()">' +
-            '<button onclick="doPassLogin()" class="btn btn-accent" style="width:100%;padding:10px">Sign In</button>' +
-          '</div>' +
-
-          '<div id="keyForm" style="display:none">' +
-            '<p style="color:var(--dim);font-size:.8rem;margin-bottom:12px">For AppCrane administrators only</p>' +
-            '<input type="password" id="keyInput" placeholder="dhk_admin_..." style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:6px;width:100%;margin-bottom:12px;font-size:14px" onkeydown="if(event.key===\'Enter\')doKeyLogin()">' +
-            '<button onclick="doKeyLogin()" class="btn btn-accent" style="width:100%;padding:10px">Sign In with Admin Key</button>' +
-          '</div>' +
-        '</div>' +
-      '</div>';
+    var overlay = _buildLoginOverlay();
+    // If page already has sidebar layout, overlay it; otherwise replace body
+    if (document.querySelector('.page-body')) {
+      document.body.appendChild(overlay);
+    } else {
+      document.body.style.cssText = 'margin:0;padding:0';
+      document.body.appendChild(overlay);
+    }
 
     window.showTab = function(tab) {
       document.getElementById('userForm').style.display = tab === 'user' ? 'block' : 'none';
