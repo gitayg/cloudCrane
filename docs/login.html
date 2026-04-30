@@ -2759,12 +2759,22 @@ function _makeJobRow(slug, phase, rawStatus, statusClass, message, actionFn, act
   return row;
 }
 
+function _sectionHeader(text, marginTop) {
+  const hdr = document.createElement('div');
+  hdr.style.cssText = 'padding:6px 14px 2px;font-size:.68rem;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;font-weight:600' + (marginTop ? ';margin-top:4px' : '');
+  hdr.textContent = text;
+  return hdr;
+}
+
 async function refreshJobsList() {
   try {
-    const r = await fetch(API + '/api/ask/jobs', { headers: { 'Authorization': 'Bearer ' + sessionToken } });
+    var jobsUrl = API + '/api/ask/jobs';
+    if (currentAppSlug) jobsUrl += '?app_slug=' + encodeURIComponent(currentAppSlug);
+    const r = await fetch(jobsUrl, { headers: { 'Authorization': 'Bearer ' + sessionToken } });
     const d = await r.json();
     const activeJobs = d.active_jobs || [];
     const myReqs = d.my_requests || [];
+    const appReqs = d.app_requests || [];
     const activeCount = activeJobs.length + myReqs.filter(function(r) { return r.job_status === 'queued' || r.job_status === 'running'; }).length;
     const badge = document.getElementById('jobsBadge');
     if (activeCount > 0) { badge.textContent = activeCount; badge.classList.add('has-jobs'); }
@@ -2772,13 +2782,11 @@ async function refreshJobsList() {
 
     const list = document.getElementById('jobsList');
     if (!document.getElementById('jobsPanel').classList.contains('open')) return;
-    list.innerHTML = '';
+    list.textContent = '';
 
     if (activeJobs.length > 0) {
       const hdr = document.createElement('div');
-      hdr.style.cssText = 'padding:6px 14px 2px;font-size:.68rem;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;font-weight:600';
-      hdr.textContent = 'Active (all users)';
-      list.appendChild(hdr);
+      list.appendChild(_sectionHeader('Active (all users)', false));
       activeJobs.forEach(function(j) {
         var row = _makeJobRow(j.app_slug, j.phase, j.status, j.status === 'running' ? 'job-status-running' : 'job-status-queued', j.enhancement_message, null, null, j.id);
         row.addEventListener('click', (function(id) { return function() { openJobDetail(id); }; })(j.id));
@@ -2787,10 +2795,7 @@ async function refreshJobsList() {
     }
 
     if (myReqs.length > 0) {
-      const hdr = document.createElement('div');
-      hdr.style.cssText = 'padding:6px 14px 2px;font-size:.68rem;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-top:4px';
-      hdr.textContent = 'My Requests';
-      list.appendChild(hdr);
+      list.appendChild(_sectionHeader('My Requests', activeJobs.length > 0));
       myReqs.forEach(function(req) {
         const statusMap = { new: 'job-status-queued', selected: 'job-status-queued', planning: 'job-status-running', pending_user_review_plan: 'job-status-running', plan_approved: 'job-status-running', coding: 'job-status-running', pushing: 'job-status-queued', building: 'job-status-running', sandbox_ready: 'job-status-queued', done: '', merged: '' };
         const cls = statusMap[req.status] || 'job-status-queued';
@@ -2799,7 +2804,6 @@ async function refreshJobsList() {
           : null;
         var row = _makeJobRow(req.app_slug, req.phase || '', req.status, cls, req.message, actionFn, 'View Plan \u2192', req.job_id || null);
 
-        // Delete button \u2014 only enabled when no job is active
         const jobActive = req.job_status === 'queued' || req.job_status === 'running';
         const delBtn = document.createElement('button');
         delBtn.className = 'ask-sessions-btn';
@@ -2830,8 +2834,27 @@ async function refreshJobsList() {
       });
     }
 
-    if (!activeJobs.length && !myReqs.length) {
-      list.innerHTML = '<div class="jobs-empty">No requests yet</div>';
+    // App-specific enhancement requests (triage queue, admin only)
+    if (appReqs.length > 0) {
+      const anyAbove = activeJobs.length > 0 || myReqs.length > 0;
+      list.appendChild(_sectionHeader((currentAppSlug || '') + ' \u2014 Requests', anyAbove));
+      const ENH_STATUS_MAP = { new: 'job-status-queued', selected: 'job-status-queued', planning: 'job-status-running', pending_user_review_plan: 'job-status-running', plan_approved: 'job-status-running', coding: 'job-status-running', pushing: 'job-status-queued', building: 'job-status-running', sandbox_ready: 'job-status-queued', done: '', merged: '' };
+      appReqs.forEach(function(req) {
+        const cls = ENH_STATUS_MAP[req.status] || 'job-status-queued';
+        var row = _makeJobRow(req.user_name || '', req.phase || '', req.status, cls, req.message, null, null, req.id);
+        if (req.latest_job_id) {
+          row.addEventListener('click', (function(jid) { return function() { openJobDetail(jid); }; })(req.latest_job_id));
+          row.style.cursor = 'pointer';
+        }
+        list.appendChild(row);
+      });
+    }
+
+    if (!activeJobs.length && !myReqs.length && !appReqs.length) {
+      const empty = document.createElement('div');
+      empty.className = 'jobs-empty';
+      empty.textContent = 'No requests yet';
+      list.appendChild(empty);
     }
   } catch (_) {}
 }

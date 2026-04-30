@@ -169,6 +169,7 @@ router.get('/session/:sessionId', (req, res) => {
 });
 
 // GET /api/ask/jobs — active jobs + user's own requests (Bearer auth)
+// Optional query: ?app_slug=xxx — if admin, also returns app_requests for that app
 router.get('/jobs', (req, res) => {
   const user = resolveUser(req);
   if (!user) throw new AppError('Authentication required', 401, 'UNAUTHORIZED');
@@ -185,6 +186,8 @@ router.get('/jobs', (req, res) => {
   `).all(user.userId);
 
   let active_jobs = [];
+  let app_requests = [];
+
   if (user.role === 'admin') {
     active_jobs = db.prepare(`
       SELECT j.id, j.phase, j.status, j.created_at,
@@ -195,9 +198,24 @@ router.get('/jobs', (req, res) => {
       ORDER BY j.id DESC
       LIMIT 30
     `).all();
+
+    const appSlug = req.query.app_slug;
+    if (appSlug) {
+      app_requests = db.prepare(`
+        SELECT er.id, er.app_slug, er.user_name, er.message, er.status, er.created_at,
+               j.id as latest_job_id, j.phase, j.status as job_status
+        FROM enhancement_requests er
+        LEFT JOIN enhancement_jobs j ON j.id = (
+          SELECT id FROM enhancement_jobs WHERE enhancement_id = er.id ORDER BY id DESC LIMIT 1
+        )
+        WHERE er.app_slug = ?
+        ORDER BY er.created_at DESC
+        LIMIT 50
+      `).all(appSlug);
+    }
   }
 
-  res.json({ active_jobs, my_requests });
+  res.json({ active_jobs, my_requests, app_requests });
 });
 
 // GET /api/ask/active/:appSlug — is any coder container live for this app?
