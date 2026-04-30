@@ -84,7 +84,7 @@ router.get('/server/app-metrics', requireAdmin, async (req, res) => {
 /**
  * GET /api/apps/:slug/metrics/:env - Per-app metrics
  */
-router.get('/:slug/metrics/:env', requireAppAccess, async (req, res) => {
+router.get('/apps/:slug/metrics/:env', requireAppAccess, async (req, res) => {
   const { env } = req.params;
   const ports = getPortsForSlot(req.app.slot);
 
