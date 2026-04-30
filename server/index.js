@@ -446,7 +446,7 @@ app.get('/studio/*splat', (req, res) => res.redirect(301, '/appstudio'));
 app.get('/coder', (req, res) => res.redirect(301, '/studio')); // legacy redirect
 
 // App manager (app user)
-app.get('/app', (req, res) => sendHtml(res, join(__dirname, '..', 'docs', 'app.html')));
+app.get('/app', (req, res) => sendHtml(res, adminSpa));
 
 // Root redirects to login
 app.get('/', (req, res) => res.redirect('/login'));

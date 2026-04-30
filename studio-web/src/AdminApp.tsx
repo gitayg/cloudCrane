@@ -10,6 +10,7 @@ import { AuditLog } from './pages/AuditLog'
 import { AppStudio } from './pages/AppStudio'
 import { Settings } from './pages/Settings'
 import { Docs } from './pages/Docs'
+import { AppManager } from './pages/AppManager'
 
 const STUDIO_SUB = [
   { id: 'requests', label: 'Requests', href: '#requests' },
@@ -76,6 +77,7 @@ export function AdminApp() {
           <Route path="/appstudio" element={<AppStudioRoute />} />
           <Route path="/settings" element={<SettingsRoute />} />
           <Route path="/docs" element={<Layout><Docs /></Layout>} />
+          <Route path="/app" element={<Layout><AppManager /></Layout>} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </BrowserRouter>
