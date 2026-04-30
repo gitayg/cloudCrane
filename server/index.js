@@ -99,6 +99,7 @@ function sendHtml(res, filePath) {
 // Static files (favicon)
 app.use('/public', express.static(join(__dirname, '..', 'public')));
 app.use('/docs', express.static(join(__dirname, '..', 'docs'), {
+  index: false,
   setHeaders(res, filePath) {
     if (filePath.endsWith('.html')) res.setHeader('Content-Security-Policy', HTML_CSP);
   },
@@ -445,8 +446,8 @@ app.get('/app', (req, res) => sendHtml(res, join(__dirname, '..', 'docs', 'app.h
 // Root redirects to login
 app.get('/', (req, res) => res.redirect('/login'));
 
-// Docs page
-app.get('/docs', (req, res) => sendHtml(res, join(__dirname, '..', 'docs', 'index.html')));
+// Docs page (now part of admin SPA)
+app.get('/docs', (req, res) => sendHtml(res, adminSpa));
 
 // Agent guide
 app.get('/agent-guide', (req, res) => { res.type('text/markdown'); res.sendFile(join(__dirname, '..', 'AGENT_GUIDE.md')); });
