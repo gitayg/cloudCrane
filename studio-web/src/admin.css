@@ -61,6 +61,25 @@ body {
 
 .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
 
+/* ── Sidebar logo ────────────────────────────────── */
+.sidebar-logo-section {
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.sidebar-logo {
+  font-weight: 700;
+  font-size: 1.05rem;
+  text-decoration: none;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  display: block;
+}
+.sidebar-logo span { color: var(--accent); }
+.admin-sidebar.collapsed .sidebar-logo-section { padding: 14px 10px 10px; }
+.admin-sidebar.collapsed .sidebar-logo { font-size: .65rem; letter-spacing: .5px; }
+
 /* ── Sidebar user section ────────────────────────── */
 .sidebar-user-section {
   padding: 10px 14px;

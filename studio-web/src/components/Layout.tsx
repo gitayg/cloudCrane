@@ -104,6 +104,13 @@ export function Layout({ children, subItems, activeSub }: Props) {
 
       {/* Sidebar */}
       <aside className={`admin-sidebar${collapsed ? ' collapsed' : ''}${mobileOpen ? ' open' : ''}`} id="mainSidebar">
+        {/* Logo */}
+        <div className="sidebar-logo-section">
+          <a href="/dashboard" className="sidebar-logo">
+            App<span>Crane</span>
+          </a>
+        </div>
+
         {/* User section */}
         <div className="sidebar-user-section">
           <span className="sidebar-user-name">{userName}</span>
