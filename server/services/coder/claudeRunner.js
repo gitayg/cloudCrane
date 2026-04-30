@@ -13,26 +13,26 @@ const CODER_TIMEOUT = parseInt(process.env.CODER_TIMEOUT_MS || '1800000', 10);
  * Call stop() to kill the process group (not just the exec wrapper).
  */
 export class ClaudeRunner extends EventEmitter {
-  constructor({ containerId, workspaceDir, prompt, apiKeyPath }) {
+  constructor({ containerId, workspaceDir, prompt, apiKey }) {
     super();
-    this._containerId   = containerId;
-    this._workspaceDir  = workspaceDir;
-    this._prompt        = prompt;
-    this._apiKeyPath    = apiKeyPath;
-    this._child         = null;
-    this._stopped       = false;
-    this._timer         = null;
+    this._containerId = containerId;
+    this._workspaceDir = workspaceDir;
+    this._prompt = prompt;
+    this._apiKey = apiKey;
+    this._child = null;
+    this._stopped = false;
+    this._timer = null;
   }
 
   start() {
-    // The session dir is mounted at /studio inside the container; api_key lives there.
     const args = [
       'exec', '-i',
       '--workdir', '/workspace',
       '-e', 'HOME=/home/studio',
+      '-e', `ANTHROPIC_API_KEY=${this._apiKey}`,
       this._containerId,
       'sh', '-c',
-      `ANTHROPIC_API_KEY=$(cat /studio/api_key) claude -p ${shellQuote(this._prompt)} --model ${CODER_MODEL} --dangerously-skip-permissions --output-format stream-json --verbose --add-dir /workspace`,
+      `claude -p ${shellQuote(this._prompt)} --model ${CODER_MODEL} --dangerously-skip-permissions --output-format stream-json --verbose --add-dir /workspace`,
     ];
 
     // detached: true gives us a process group leader so we can kill the whole group

@@ -1,5 +1,5 @@
-import { execFileSync, execSync } from 'child_process';
-import { mkdirSync, writeFileSync, chmodSync, existsSync } from 'fs';
+import { execFileSync } from 'child_process';
+import { mkdirSync, chmodSync, existsSync } from 'fs';
 import { join, resolve } from 'path';
 import { randomUUID } from 'crypto';
 import { getDb } from '../../db.js';
@@ -17,10 +17,6 @@ function coderRoot() {
 
 function sessionDir(sessionId) {
   return join(coderRoot(), sessionId);
-}
-
-function apiKeyPath(sessionId) {
-  return join(sessionDir(sessionId), 'api_key');
 }
 
 /** In-memory map of active sessions { sessionId → SessionState } */
@@ -156,7 +152,6 @@ function cloneWorkspace(sessionId, app, branchName, onLog) {
 
 function startContainer(sessionId, workspaceDir, onLog) {
   const containerName = `appcrane-coder-${sessionId}`;
-  const sDir = sessionDir(sessionId);
 
   const args = [
     'run', '-d', '--rm',
@@ -166,7 +161,6 @@ function startContainer(sessionId, workspaceDir, onLog) {
     '--label', `coder.session=${sessionId}`,
     '--memory=2g', '--cpus=1',
     '-v', `${workspaceDir}:/workspace`,
-    '-v', `${sDir}:/studio:ro`,
     STUDIO_IMAGE,
     'tail', '-f', '/dev/null',
   ];
@@ -193,9 +187,6 @@ export async function createSession(app, userId, onLog) {
 
   const sessionId  = randomUUID();
   const branchName = `coder/${sessionId}`;
-
-  mkdirSync(sessionDir(sessionId), { recursive: true });
-  writeFileSync(apiKeyPath(sessionId), process.env.ANTHROPIC_API_KEY, { mode: 0o644 }); // nosemgrep
 
   db.prepare(`
     INSERT INTO coder_sessions (id, app_slug, user_id, branch_name, status)
@@ -271,7 +262,7 @@ export async function dispatch(sessionId, prompt) {
     containerId:  state.containerId,
     workspaceDir: state.workspaceDir,
     prompt,
-    apiKeyPath:   `/studio/api_key`,
+    apiKey: process.env.ANTHROPIC_API_KEY,
   });
   state.runner = runner;
 
