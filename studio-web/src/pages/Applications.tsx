@@ -96,6 +96,19 @@ export function Applications() {
     setApps(a)
     setUsers(u)
     fetchVersions(a)
+    fetchIcons(a)
+  }
+
+  function fetchIcons(appList: App[]) {
+    appList.forEach(app => {
+      fetch(`/api/apps/${app.slug}/icon`)
+        .then(r => r.ok ? r.blob() : null)
+        .then(b => {
+          if (!b) return
+          setIconUrls(prev => ({ ...prev, [app.slug]: URL.createObjectURL(b) }))
+        })
+        .catch(() => {})
+    })
   }
 
   function fetchVersions(appList: App[]) {

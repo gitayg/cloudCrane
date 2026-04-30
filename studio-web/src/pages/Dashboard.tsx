@@ -185,7 +185,24 @@ function TrendChart({ days, apps }: { days: string[]; apps: ActivityApp[] }) {
 }
 
 function AppIcon({ slug, name, onClick }: { slug: string; name: string; onClick?: () => void }) {
-  const [imgHidden, setImgHidden] = useState(false)
+  const [iconUrl, setIconUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    let blobUrl: string | null = null
+    fetch(`/api/apps/${slug}/icon`)
+      .then(r => r.ok ? r.blob() : null)
+      .then(b => {
+        if (cancelled || !b) return
+        blobUrl = URL.createObjectURL(b)
+        setIconUrl(blobUrl)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+      if (blobUrl) URL.revokeObjectURL(blobUrl)
+    }
+  }, [slug])
 
   return (
     <div
@@ -197,15 +214,13 @@ function AppIcon({ slug, name, onClick }: { slug: string; name: string; onClick?
       }}
       onClick={onClick}
     >
-      {!imgHidden && (
+      {iconUrl ? (
         <img
-          src={`/api/apps/${slug}/icon`}
+          src={iconUrl}
           alt=""
-          onError={() => setImgHidden(true)}
           style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' }}
         />
-      )}
-      {imgHidden && (
+      ) : (
         <span style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--dim)' }}>{initials(name)}</span>
       )}
     </div>
