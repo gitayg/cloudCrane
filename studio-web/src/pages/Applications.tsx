@@ -419,7 +419,7 @@ export function Applications() {
                     <option value="private">private</option>
                     <option value="public">public</option>
                   </select>
-                  <a className="btn btn-xs" href={`/app?slug=${app.slug}`} target="_blank" rel="noreferrer">manage</a>
+                  <a className="btn btn-xs" href={`/app?slug=${app.slug}`}>manage</a>
                   <button className="btn btn-xs" onClick={() => showAppToken(app.slug)}>onboard</button>
                   <button className="btn btn-xs" onClick={() => setCategory(app)}>tag</button>
                   <button className="btn btn-xs" onClick={() => editResources(app)}>⚙ limits</button>
