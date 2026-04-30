@@ -180,6 +180,23 @@ export function Layout({ children, subItems, activeSub }: Props) {
             <button className="theme-btn" onClick={toggleTheme} title="Toggle theme">
               {theme === 'dark' ? '☀' : '🌙'}
             </button>
+            <button
+              className="sidebar-collapse-btn"
+              onClick={toggleCollapse}
+              style={{ marginLeft: 'auto' }}
+              title={collapsed ? 'Expand' : 'Collapse'}
+            >
+              {collapsed ? '▸' : '◄'}{!collapsed && <span> Collapse</span>}
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      {/* Page content */}
+      <main className={`admin-content${collapsed ? ' collapsed' : ''}`}>
+        <div className="admin-topbar">
+          <span className="admin-topbar-title">{pageTitle}</span>
+          <div className="admin-topbar-right">
             <div className="notif-wrap" ref={notifRef}>
               <button className="notif-bell-btn" onClick={openNotif} title="Notifications">🔔</button>
               {notifItems.length > 0 && (
@@ -201,23 +218,6 @@ export function Layout({ children, subItems, activeSub }: Props) {
                 }
               </div>
             </div>
-            <button
-              className="sidebar-collapse-btn"
-              onClick={toggleCollapse}
-              style={{ marginLeft: 'auto' }}
-              title={collapsed ? 'Expand' : 'Collapse'}
-            >
-              {collapsed ? '▸' : '◄'}{!collapsed && <span> Collapse</span>}
-            </button>
-          </div>
-        </div>
-      </aside>
-
-      {/* Page content */}
-      <main className={`admin-content${collapsed ? ' collapsed' : ''}`}>
-        <div className="admin-topbar">
-          <span className="admin-topbar-title">{pageTitle}</span>
-          <div className="admin-topbar-right">
             {userName && <span className="admin-topbar-user">{userName}</span>}
             <button className="admin-topbar-signout" onClick={signOut}>Sign out</button>
           </div>
