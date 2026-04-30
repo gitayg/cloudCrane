@@ -25,14 +25,14 @@ export class ClaudeRunner extends EventEmitter {
   }
 
   start() {
+    // The session dir is mounted at /studio inside the container; api_key lives there.
     const args = [
       'exec', '-i',
       '--workdir', '/workspace',
-      '-e', `ANTHROPIC_API_KEY_FILE=${this._apiKeyPath}`,
-      '-e', `HOME=/home/studio`,
+      '-e', 'HOME=/home/studio',
       this._containerId,
       'sh', '-c',
-      `ANTHROPIC_API_KEY=$(cat ${this._apiKeyPath}) claude -p ${shellQuote(this._prompt)} --model ${CODER_MODEL} --dangerously-skip-permissions --output-format stream-json --verbose --add-dir /workspace`,
+      `ANTHROPIC_API_KEY=$(cat /studio/api_key) claude -p ${shellQuote(this._prompt)} --model ${CODER_MODEL} --dangerously-skip-permissions --output-format stream-json --verbose --add-dir /workspace`,
     ];
 
     // detached: true gives us a process group leader so we can kill the whole group
