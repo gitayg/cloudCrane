@@ -228,8 +228,8 @@ th{color:var(--dim);font-weight:500}
 document.querySelector('.page-body').insertAdjacentHTML('afterbegin', sidebar('applications'));
 loadVersion(); loadUserInfo();
 
-const API = window.location.origin;
-// KEY is already declared by shared.js (reads cc_api_key). Extend to also try cc_user_key.
+// API and KEY are already declared by shared.js.
+// Extend KEY to also try cc_user_key for app users.
 if (!KEY) KEY = localStorage.getItem('cc_user_key') || '';
 const urlSlug = new URLSearchParams(window.location.search).get('slug');
 let currentApp = urlSlug || localStorage.getItem('cc_current_app') || '';
