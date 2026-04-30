@@ -104,6 +104,10 @@ app.use('/docs', express.static(join(__dirname, '..', 'docs'), {
   },
 }));
 app.get('/favicon.svg', (req, res) => res.sendFile(join(__dirname, '..', 'public', 'favicon.svg')));
+// Standard browser favicon auto-requests — redirect to the canonical SVG
+for (const p of ['/favicon.ico', '/favicon.png', '/logo.svg', '/apple-touch-icon.png', '/apple-touch-icon-precomposed.png', '/logo192.png', '/logo512.png']) {
+  app.get(p, (_req, res) => res.redirect(301, '/favicon.svg'));
+}
 
 // Serve app icons publicly (no auth required — needed by login page and iframe topbar)
 // Raster formats preferred; legacy SVG served with restrictive CSP to block inline scripts.
@@ -163,7 +167,7 @@ app.use((req, res, next) => {
 });
 
 // Guard: block everything except public routes until admin is configured
-const PUBLIC_PATHS = ['/api/info', '/favicon.svg', '/login', '/portal', '/api/identity/login', '/api/identity/verify', '/api/identity/logout', '/api/identity/me'];
+const PUBLIC_PATHS = ['/api/info', '/favicon.svg', '/favicon.ico', '/favicon.png', '/logo.svg', '/apple-touch-icon.png', '/apple-touch-icon-precomposed.png', '/logo192.png', '/logo512.png', '/login', '/portal', '/api/identity/login', '/api/identity/verify', '/api/identity/logout', '/api/identity/me'];
 app.use((req, res, next) => {
   // Settings GETs are public (agents read branding); writes go through requireAdmin.
   const isPublicSettingsRead = req.method === 'GET' && req.path.startsWith('/api/settings');
