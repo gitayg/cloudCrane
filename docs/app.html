@@ -234,7 +234,7 @@ if (!KEY) KEY = localStorage.getItem('cc_user_key') || '';
 const urlSlug = new URLSearchParams(window.location.search).get('slug');
 let currentApp = urlSlug || localStorage.getItem('cc_current_app') || '';
 let currentEnv = 'production';
-let isAdmin = false;
+let isAdminUser = false;
 
 function doLogin() {
   const k = document.getElementById('keyInput').value.trim();
@@ -266,8 +266,8 @@ async function init() {
   try {
     const me = await apiFetch('/api/auth/me');
     // user display handled by sidebar footer (loadUserInfo)
-    isAdmin = me.user.role === 'admin';
-    if (isAdmin) document.getElementById('infoSection').classList.remove('hidden');
+    isAdminUser = me.user.role === 'admin';
+    if (isAdminUser) document.getElementById('infoSection').classList.remove('hidden');
 
     if (me.apps.length === 0) {
       showMsg('No apps assigned to you. Ask an admin to assign you.', false);
@@ -318,7 +318,7 @@ async function loadApp() {
   clearInterval(_metricsPoller); _metricsPoller = null;
   loadMetrics();
   _metricsPoller = setInterval(loadMetrics, 10000);
-  if (isAdmin) loadLimits();
+  if (isAdminUser) loadLimits();
 
   // Update toggle UI without calling loadApp again
   document.getElementById('envProd').className = 'env-btn' + (currentEnv === 'production' ? ' active-prod' : '');
@@ -333,7 +333,7 @@ async function loadApp() {
   }
 
   // App info (admin only)
-  if (isAdmin) {
+  if (isAdminUser) {
     try {
       const appData = await apiFetch('/api/apps/' + currentApp);
       document.getElementById('infoName').value = appData.app.name || '';
@@ -828,7 +828,7 @@ async function loadMetrics() {
 
 // ── Resource limits (Feature 8) ──────────────────────────────
 async function loadLimits() {
-  if (!isAdmin || !currentApp) return;
+  if (!isAdminUser || !currentApp) return;
   try {
     var d = await apiFetch('/api/apps/' + currentApp);
     var rl = d.app.resource_limits || {};
