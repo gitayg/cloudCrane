@@ -55,6 +55,12 @@ export const api = {
                    j<{ message: string; deploy_id: number }>(`/api/agents/${id}/promote-prod`,
                      { method: 'POST' }),
 
+  gitStatus: (id: string) =>
+    j<{ uncommitted: string[]; branch: string; ahead: number; behind: number }>(`/api/agents/${id}/git/status`),
+
+  gitDiff: (id: string) =>
+    fetch(`/api/agents/${id}/git/diff`, { headers: authHeaders() }).then(r => r.text()),
+
   events: (
     id: string,
     onMessages: (msgs: Message[]) => void,
