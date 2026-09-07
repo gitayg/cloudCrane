@@ -740,7 +740,7 @@ function InstallDialog({ entry, onClose, onCreated }: {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [warning, setWarning] = useState<string | null>(null)
-  const [done, setDone] = useState<{ slug: string; name: string } | null>(null)
+  const [done, setDone] = useState<{ slug: string; name: string; deploying: boolean } | null>(null)
 
   const navigate = useNavigate()
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -843,7 +843,23 @@ function InstallDialog({ entry, onClose, onCreated }: {
         )
       }
     }
-    setDone({ slug, name: name.trim() })
+    // Creating the app row only registers it — nothing is built or pulled until
+    // a deploy runs, and an undeployed app answers "Not deployed" at its URL.
+    // The catalogue promises two clicks, so the deploy is part of the second one.
+    // A failure here is NOT fatal: the app exists and can be deployed from
+    // Manage, so say that rather than implying nothing happened.
+    let deploying = false
+    try {
+      await adminApi.post('/api/apps/' + slug + '/deploy/production', {})
+      deploying = true
+    } catch (err) {
+      setWarning(
+        'The app was created, but starting its first deploy failed: ' +
+        (err instanceof Error ? err.message : String(err)) +
+        '. Open it under Manage and deploy from there.',
+      )
+    }
+    setDone({ slug, name: name.trim(), deploying })
     setSubmitting(false)
   }
 
@@ -877,8 +893,12 @@ function InstallDialog({ entry, onClose, onCreated }: {
             <>
               <div style={{ border: '1px solid rgba(34,197,94,.35)', background: 'rgba(34,197,94,.08)', borderRadius: 6, padding: 12, lineHeight: 1.5 }}>
                 <strong>{done.name} created</strong> as <code style={{ fontFamily: 'monospace' }}>{done.slug}</code>.
-                Creating the app does not deploy it — open it under Manage and run the first deploy there.
-                {source === 'image' && ' The image is pulled by this host at deploy time; nothing was downloaded now.'}
+                {done.deploying
+                  ? <> Its first deploy is running now. {source === 'image'
+                      ? 'This host is pulling the image, which can take a few minutes on a large one.'
+                      : 'This host is cloning and building the repo, which can take a few minutes.'} The URL answers
+                      "Not deployed" until it finishes — watch progress under Manage.</>
+                  : <> The deploy did not start; open it under Manage and run the first deploy there.</>}
               </div>
               {warning && (
                 <div role="alert" style={{ border: '1px solid rgba(249,115,22,.4)', background: 'rgba(249,115,22,.08)', borderRadius: 6, padding: 12, lineHeight: 1.5 }}>
@@ -886,7 +906,7 @@ function InstallDialog({ entry, onClose, onCreated }: {
                 </div>
               )}
               <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-accent" onClick={() => navigate('/applications')}>Go to Manage</button>
+                <button className="btn btn-accent" onClick={() => navigate('/applications')}>Watch the deploy</button>
                 <button className="btn" onClick={onCreated}>Back to the catalogue</button>
               </div>
             </>
@@ -900,24 +920,64 @@ function InstallDialog({ entry, onClose, onCreated }: {
               {/* Source */}
               <fieldset style={{ border: '1px solid var(--border)', borderRadius: 6, padding: 12, margin: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <legend style={label}>Source</legend>
-                <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                  <input type="radio" name="cat-source" checked={source === 'github'} onChange={() => setSource('github')} />
+
+                {/* A segmented switch rather than two radios: this is the first and
+                    most consequential choice in the dialog, and it changes every
+                    field below it. Radios read as a detail; a switch reads as a
+                    fork in the road, which is what it is. */}
+                <div role="radiogroup" aria-label="Deploy source" style={{ display: 'flex', gap: 0, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                  {([
+                    ['github', 'GitHub', true],
+                    ['image', 'Docker image', hasImage],
+                  ] as const).map(([val, text, enabled]) => (
+                    <button
+                      key={val}
+                      type="button"
+                      role="radio"
+                      aria-checked={source === val}
+                      disabled={!enabled}
+                      onClick={() => enabled && setSource(val as 'github' | 'image')}
+                      title={!enabled ? 'This project publishes no usable image, so only the GitHub path is offered.' : undefined}
+                      style={{
+                        flex: 1, padding: '9px 12px', border: 0, cursor: enabled ? 'pointer' : 'not-allowed',
+                        fontSize: '.85rem', fontWeight: 600,
+                        background: source === val ? 'var(--accent)' : 'transparent',
+                        color: source === val ? '#fff' : enabled ? 'var(--text)' : 'var(--dim)',
+                        opacity: enabled ? 1 : .55,
+                      }}
+                    >{text}</button>
+                  ))}
+                </div>
+
+                {/* Why this choice matters. Stated here rather than in a doc page,
+                    because it is decided here and almost never revisited. */}
+                <div
+                  style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: '.78rem', color: 'var(--dim)', lineHeight: 1.5 }}
+                  title={
+                    'GitHub: AppCrane clones the repo and builds it on this host. You can follow the '
+                    + "default branch, so the next deploy picks up whatever upstream shipped, and you can read "
+                    + 'the exact source that was built.\n\n'
+                    + 'Docker image: this host pulls a published image and runs it as-is. Faster, because '
+                    + 'nothing is built, and it is the artefact the project itself tested. But the tag must be '
+                    + 'pinned: AppCrane refuses ":latest", because a moving tag changes what you are running '
+                    + 'without a deploy and without a record.\n\n'
+                    + 'Neither option updates on its own. Both change only when a deploy runs.'
+                  }
+                >
+                  <span aria-hidden="true" style={{ fontWeight: 700, color: 'var(--accent)' }}>?</span>
                   <span>
-                    <strong>GitHub repository</strong> — AppCrane clones{' '}
-                    <code style={{ fontFamily: 'monospace' }}>{entry.repo || '—'}</code> and builds it here.
+                    {source === 'github'
+                      ? <>Clones <code style={{ fontFamily: 'monospace' }}>{entry.repo || '—'}</code> and builds it here.
+                          Slower to deploy, but you can follow the default branch and read exactly what was built.</>
+                      : <>Runs <code style={{ fontFamily: 'monospace' }}>{base}</code> as published — no build, so it is
+                          fast and it is the artefact the project tested. The tag must be pinned.</>}
+                    {' '}Neither updates by itself; both change only when a deploy runs.
                   </span>
-                </label>
-                {hasImage ? (
-                  <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                    <input type="radio" name="cat-source" checked={source === 'image'} onChange={() => setSource('image')} />
-                    <span>
-                      <strong>Published image</strong> — this host runs{' '}
-                      <code style={{ fontFamily: 'monospace' }}>{base}</code> as published, with no build.
-                    </span>
-                  </label>
-                ) : (
-                  <div style={{ color: 'var(--dim)' }}>
-                    This entry has no published image, so only the GitHub path is offered.
+                </div>
+
+                {!hasImage && (
+                  <div style={{ color: 'var(--dim)', fontSize: '.78rem' }}>
+                    This project publishes no usable first-party image, so only the GitHub path is offered.
                   </div>
                 )}
               </fieldset>
@@ -1126,14 +1186,14 @@ function InstallDialog({ entry, onClose, onCreated }: {
         {!done && (
           <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', background: 'var(--surface2)', display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: '.75rem', color: 'var(--dim)' }}>
-              {blockers.length > 0 ? `Still needs ${blockers[0]}.` : 'Creates the app; the first deploy is run from Manage.'}
+              {blockers.length > 0 ? `Still needs ${blockers[0]}.` : 'Creates the app and starts its first deploy. Pulling the image can take a few minutes.'}
             </span>
             <button className="btn btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>Cancel</button>
             <button
               className="btn btn-sm btn-accent"
               onClick={submit}
               disabled={submitting || blockers.length > 0}
-            >{submitting ? 'Creating…' : 'Create app'}</button>
+            >{submitting ? 'Deploying…' : 'Deploy'}</button>
           </div>
         )}
       </div>

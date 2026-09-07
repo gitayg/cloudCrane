@@ -1157,6 +1157,18 @@ app.get('/my-requests', (req, res) => sendHtml(res, adminSpa));
 app.get('/builders', (req, res) => sendHtml(res, adminSpa)); // legacy — SPA redirects to /requests
 app.get('/appstudio', (req, res) => sendHtml(res, adminSpa));
 app.get('/settings', (req, res) => sendHtml(res, adminSpa));
+// v2.62.1: the catalogue shipped in v2.61.0 with a nav entry but no server
+// route. Clicking the entry worked, because React Router handles that
+// client-side and never asks the server — but loading /catalog directly, or
+// refreshing while on it, fell through every route here to the API 404 and
+// showed the user raw JSON. Every SPA path needs a line in this block; there is
+// no catch-all, deliberately, so that an app slug is never shadowed by a typo'd
+// SPA route. test/spa-routes.test.js now fails when a route is added to the SPA
+// and not to this list.
+app.get('/catalog', (req, res) => sendHtml(res, adminSpa));
+// Found by the same test: /skills is a client-side redirect to /settings#skills,
+// but a direct load never reaches React to be redirected.
+app.get('/skills', (req, res) => sendHtml(res, adminSpa));
 app.get('/mcp', (req, res) => sendHtml(res, adminSpa));
 app.get('/studio', (req, res) => res.redirect(301, '/appstudio'));
 app.get('/studio/*splat', (req, res) => res.redirect(301, '/appstudio'));
