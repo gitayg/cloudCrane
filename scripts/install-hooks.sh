@@ -5,16 +5,24 @@
 # Run once after `git clone` (or any time the hook script changes):
 #   bash scripts/install-hooks.sh
 #
-# What it installs:
-#   - .git/hooks/pre-commit → runs scripts/check-role-patterns.sh --strict
-#   - .git/hooks/pre-commit → runs scripts/check-no-shadow-js.sh --strict
+# What it installs, as a pre-commit hook:
+#   - scripts/check-role-patterns.sh    --strict
+#   - scripts/check-no-shadow-js.sh     --strict
+#   - scripts/check-test-portability.sh --strict
+#   - scripts/check-route-authz.mjs     --strict
 #
-# Both scripts already exist in the repo and are versioned. The hook is
-# a thin wrapper that exits non-zero if either watchdog fires, blocking
-# the commit until the issue is fixed (or use `--no-verify` to override).
+# THIS LIST MUST MATCH .github/workflows/role-check.yml. It did not once:
+# check-route-authz ran only in CI, so a route that took an app identifier
+# without a per-app authorization check committed cleanly and turned CI red
+# after the push (v2.60.0). A check that exists only in CI is discovered at
+# the least convenient moment, and this repo has already had CI sit red for
+# five releases without anyone noticing.
 #
-# CI runs the same scripts via .github/workflows/role-check.yml — this
-# hook is for fast local feedback, the CI is the safety net.
+# `npm test` is deliberately NOT here. CI runs it; at ~72s it would make every
+# commit painful, and the hook's job is fast feedback rather than full proof.
+#
+# All scripts exist in the repo and are versioned. The hook exits non-zero if
+# any watchdog fires, blocking the commit (use `--no-verify` to override).
 
 set -euo pipefail
 
@@ -36,6 +44,7 @@ set -e
 bash scripts/check-role-patterns.sh --strict
 bash scripts/check-no-shadow-js.sh --strict
 bash scripts/check-test-portability.sh --strict
+node scripts/check-route-authz.mjs --strict
 HOOK
 
 chmod +x "$HOOK_FILE"
