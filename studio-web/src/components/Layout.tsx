@@ -67,6 +67,21 @@ function appInitials(name: string): string {
 // content) and don't belong behind a platform-level gate. DELETE-skill
 // is still platform_admin-only (server-side gate), enforced both in
 // the SkillsTab UI and on the API.
+// Lucide "store" (MIT), inlined to match the shared 24x24 / 2px-stroke geometry
+// of components/icons.tsx. The catalogue is a shelf of apps you can take one
+// from, and none of the existing glyphs says that: Grid is the launcher and
+// Layers is Manage, both of which sit beside it in the rail.
+const StoreIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+       fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+       style={{ display: 'inline-block', verticalAlign: 'middle' }} aria-hidden="true">
+    <path d="m2 7 1.5-3.5A1 1 0 0 1 4.4 3h15.2a1 1 0 0 1 .9.5L22 7" />
+    <path d="M2 7h20v2a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0z" />
+    <path d="M4 12v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8" />
+    <path d="M10 21v-5h4v5" />
+  </svg>
+)
+
 const NAV: NavItem[] = [
   // v2.34.0: Launch leads the nav — it's the post-login landing page (v2.33.0)
   // and the app picker, so it should be reachable by name rather than only by
@@ -76,6 +91,10 @@ const NAV: NavItem[] = [
   { id: 'dashboard',    label: 'Dashboard',    href: '/dashboard',    icon: <Icon.Dashboard /> },
   { id: 'applications', label: 'Manage',       href: '/applications', icon: <Icon.Layers /> },
   { id: 'requests',     label: 'Requests',     href: '/requests',     icon: <Icon.Lightbulb /> },
+  // v2.59.x: the app catalogue. Deliberately ungated — every logged-in user
+  // may browse it; only the per-row Deploy button is conditioned on
+  // `platform.create_app`, which the page learns from GET /api/catalog.
+  { id: 'catalog',      label: 'Catalogue',    href: '/catalog',      icon: <StoreIcon /> },
   { id: 'docs',         label: 'Docs',         href: '/docs',         icon: <Icon.Book /> },
   { id: 'settings',     label: 'Settings',     href: '/settings',     icon: <Icon.Settings /> },
 ]

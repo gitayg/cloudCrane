@@ -1,0 +1,662 @@
+[
+  {
+    "name": "Akaunting",
+    "slug": "akaunting",
+    "category": "Accounting",
+    "repo": "akaunting/akaunting",
+    "image": "akaunting/akaunting",
+    "home": "https://akaunting.com",
+    "license": "NOASSERTION",
+    "short": "Small-business accounting and invoicing"
+  },
+  {
+    "name": "Crater",
+    "slug": "crater",
+    "category": "Accounting",
+    "repo": "crater-invoice-inc/crater",
+    "image": null,
+    "home": "https://craterapp.com",
+    "license": "AGPL-3.0",
+    "short": "Simple invoicing for freelancers"
+  },
+  {
+    "name": "Invoice Ninja",
+    "slug": "invoice-ninja",
+    "category": "Accounting",
+    "repo": "invoiceninja/invoiceninja",
+    "image": "invoiceninja/invoiceninja",
+    "home": "https://invoiceninja.com",
+    "license": "NOASSERTION",
+    "short": "Invoicing, quotes and payment collection"
+  },
+  {
+    "name": "Lightdash",
+    "slug": "lightdash",
+    "category": "BI",
+    "repo": "lightdash/lightdash",
+    "image": "lightdash/lightdash",
+    "home": "https://lightdash.com",
+    "license": "NOASSERTION",
+    "short": "BI layered directly on your dbt models"
+  },
+  {
+    "name": "Metabase",
+    "slug": "metabase",
+    "category": "BI",
+    "repo": "metabase/metabase",
+    "image": "metabase/metabase",
+    "home": "https://metabase.com",
+    "license": "NOASSERTION",
+    "short": "Ask questions of your data without SQL"
+  },
+  {
+    "name": "Redash",
+    "slug": "redash",
+    "category": "BI",
+    "repo": "getredash/redash",
+    "image": "redash/redash",
+    "home": "http://redash.io/",
+    "license": "BSD-2-Clause",
+    "short": "Query many data sources and chart the results"
+  },
+  {
+    "name": "Superset",
+    "slug": "superset",
+    "category": "BI",
+    "repo": "apache/superset",
+    "image": "apache/superset",
+    "home": "https://superset.apache.org/",
+    "license": "Apache-2.0",
+    "short": "Dashboards and exploration at data-warehouse scale"
+  },
+  {
+    "name": "EspoCRM",
+    "slug": "espocrm",
+    "category": "CRM",
+    "repo": "espocrm/espocrm",
+    "image": "espocrm/espocrm",
+    "home": "https://www.espocrm.com",
+    "license": "AGPL-3.0",
+    "short": "Lightweight PHP CRM, easy to self-host"
+  },
+  {
+    "name": "Krayin",
+    "slug": "krayin",
+    "category": "CRM",
+    "repo": "krayin/laravel-crm",
+    "image": "webkul/krayin",
+    "home": "https://krayincrm.com",
+    "license": "MIT",
+    "short": "Laravel CRM for small sales teams"
+  },
+  {
+    "name": "SuiteCRM",
+    "slug": "suitecrm",
+    "category": "CRM",
+    "repo": "SuiteCRM/SuiteCRM",
+    "image": null,
+    "home": "https://www.suitecrm.com",
+    "license": "AGPL-3.0",
+    "short": "Mature enterprise CRM, SugarCRM's successor"
+  },
+  {
+    "name": "Twenty",
+    "slug": "twenty",
+    "category": "CRM",
+    "repo": "twentyhq/twenty",
+    "image": "twentycrm/twenty",
+    "home": "https://twenty.com",
+    "license": "NOASSERTION",
+    "short": "Modern CRM, positioned against Salesforce"
+  },
+  {
+    "name": "Bagisto",
+    "slug": "bagisto",
+    "category": "Commerce",
+    "repo": "bagisto/bagisto",
+    "image": "webkul/bagisto",
+    "home": "https://bagisto.com",
+    "license": "MIT",
+    "short": "Laravel e-commerce with multi-vendor support"
+  },
+  {
+    "name": "Medusa",
+    "slug": "medusa",
+    "category": "Commerce",
+    "repo": "medusajs/medusa",
+    "image": null,
+    "home": "https://medusajs.com",
+    "license": "NOASSERTION",
+    "short": "Headless commerce backend for custom storefronts"
+  },
+  {
+    "name": "Spree",
+    "slug": "spree",
+    "category": "Commerce",
+    "repo": "spree/spree",
+    "image": "spreecommerce/spree",
+    "home": "https://spreecommerce.org",
+    "license": "BSD-3-Clause",
+    "short": "Rails commerce platform, long-established"
+  },
+  {
+    "name": "Sylius",
+    "slug": "sylius",
+    "category": "Commerce",
+    "repo": "Sylius/Sylius",
+    "image": null,
+    "home": "https://sylius.com",
+    "license": "MIT",
+    "short": "Symfony e-commerce for tailored shops"
+  },
+  {
+    "name": "Vendure",
+    "slug": "vendure",
+    "category": "Commerce",
+    "repo": "vendurehq/vendure",
+    "image": null,
+    "home": "https://www.vendure.io",
+    "license": "NOASSERTION",
+    "short": "TypeScript headless commerce framework"
+  },
+  {
+    "name": "Element",
+    "slug": "element",
+    "category": "Comms",
+    "repo": "element-hq/element-web",
+    "image": "vectorim/element-web",
+    "home": "https://element.io",
+    "license": "AGPL-3.0",
+    "short": "Matrix client for federated, encrypted chat"
+  },
+  {
+    "name": "Mattermost",
+    "slug": "mattermost",
+    "category": "Comms",
+    "repo": "mattermost/mattermost",
+    "image": "mattermost/mattermost-team-edition",
+    "home": "https://mattermost.com",
+    "license": "NOASSERTION",
+    "short": "Secure team messaging, Slack alternative"
+  },
+  {
+    "name": "Rocket.Chat",
+    "slug": "rocketchat",
+    "category": "Comms",
+    "repo": "RocketChat/Rocket.Chat",
+    "image": "rocket.chat",
+    "home": "https://rocket.chat/",
+    "license": "NOASSERTION",
+    "short": "Team chat with compliance controls"
+  },
+  {
+    "name": "Zulip",
+    "slug": "zulip",
+    "category": "Comms",
+    "repo": "zulip/zulip",
+    "image": "zulip/docker-zulip",
+    "home": "https://zulip.com",
+    "license": "Apache-2.0",
+    "short": "Threaded team chat organised by topic"
+  },
+  {
+    "name": "Mayan EDMS",
+    "slug": "mayan-edms",
+    "category": "DMS",
+    "repo": "mayan-edms/mayan-edms",
+    "image": "mayanedms/mayanedms",
+    "home": "https://www.mayan-edms.com",
+    "license": "NOASSERTION",
+    "short": "Document management with workflows and metadata"
+  },
+  {
+    "name": "Paperless-ngx",
+    "slug": "paperless-ngx",
+    "category": "DMS",
+    "repo": "paperless-ngx/paperless-ngx",
+    "image": "paperlessngx/paperless-ngx",
+    "home": "http://docs.paperless-ngx.com/",
+    "license": "GPL-3.0",
+    "short": "Scan, OCR and archive paper documents"
+  },
+  {
+    "name": "Papermerge",
+    "slug": "papermerge",
+    "category": "DMS",
+    "repo": "papermerge/papermerge-core",
+    "image": "papermerge/papermerge",
+    "home": "https://papermerge.com",
+    "license": "Apache-2.0",
+    "short": "Document archive with OCR and tagging"
+  },
+  {
+    "name": "AFFiNE",
+    "slug": "affine",
+    "category": "Docs",
+    "repo": "toeverything/AFFiNE",
+    "image": "ghcr.io/toeverything/affine:stable",
+    "home": "https://affine.pro",
+    "license": "NOASSERTION",
+    "short": "Docs, whiteboard and database in one canvas"
+  },
+  {
+    "name": "BookStack",
+    "slug": "bookstack",
+    "category": "Docs",
+    "repo": "BookStackApp/BookStack",
+    "image": "linuxserver/bookstack",
+    "home": "https://codeberg.org/bookstack/bookstack",
+    "license": "MIT",
+    "short": "Structured documentation in books and chapters"
+  },
+  {
+    "name": "Docmost",
+    "slug": "docmost",
+    "category": "Docs",
+    "repo": "docmost/docmost",
+    "image": "docmost/docmost",
+    "home": "https://docmost.com",
+    "license": "AGPL-3.0",
+    "short": "Collaborative docs and wiki, real-time editing"
+  },
+  {
+    "name": "Outline",
+    "slug": "outline",
+    "category": "Docs",
+    "repo": "outline/outline",
+    "image": "outlinewiki/outline",
+    "home": "https://www.getoutline.com",
+    "license": "NOASSERTION",
+    "short": "Team wiki and knowledge base, fast search"
+  },
+  {
+    "name": "Wiki.js",
+    "slug": "wikijs",
+    "category": "Docs",
+    "repo": "requarks/wiki",
+    "image": "requarks/wiki",
+    "home": "https://js.wiki",
+    "license": "AGPL-3.0",
+    "short": "Modern wiki with many auth backends"
+  },
+  {
+    "name": "Apache OFBiz",
+    "slug": "apache-ofbiz",
+    "category": "ERP",
+    "repo": "apache/ofbiz-framework",
+    "image": "ghcr.io/apache/ofbiz",
+    "home": "https://ofbiz.apache.org/",
+    "license": "Apache-2.0",
+    "short": "Java ERP framework for building bespoke systems"
+  },
+  {
+    "name": "Axelor",
+    "slug": "axelor",
+    "category": "ERP",
+    "repo": "axelor/axelor-open-suite",
+    "image": "axelor/aos-ce",
+    "home": "http://axelor.com",
+    "license": "NOASSERTION",
+    "short": "Low-code ERP with a visual process builder"
+  },
+  {
+    "name": "Dolibarr",
+    "slug": "dolibarr",
+    "category": "ERP",
+    "repo": "Dolibarr/dolibarr",
+    "image": "dolibarr/dolibarr",
+    "home": "https://www.dolibarr.org",
+    "license": "GPL-3.0",
+    "short": "ERP and CRM aimed at small firms and freelancers"
+  },
+  {
+    "name": "ERPNext",
+    "slug": "erpnext",
+    "category": "ERP",
+    "repo": "frappe/erpnext",
+    "image": "frappe/erpnext",
+    "home": "https://frappe.io/erpnext",
+    "license": "GPL-3.0",
+    "short": "All-in-one ERP on the Frappe framework"
+  },
+  {
+    "name": "Odoo",
+    "slug": "odoo",
+    "category": "ERP",
+    "repo": "odoo/odoo",
+    "image": "odoo",
+    "home": "https://www.odoo.com",
+    "license": "NOASSERTION",
+    "short": "Full business suite \u2014 sales, stock, accounting, HR"
+  },
+  {
+    "name": "Tryton",
+    "slug": "tryton",
+    "category": "ERP",
+    "repo": "tryton/tryton",
+    "image": "tryton/tryton",
+    "home": "https://code.tryton.org/tryton",
+    "license": "NOASSERTION",
+    "short": "Modular ERP, three-tier, heavily customisable"
+  },
+  {
+    "name": "Documenso",
+    "slug": "documenso",
+    "category": "Esign",
+    "repo": "documenso/documenso",
+    "image": "documenso/documenso",
+    "home": "https://documenso.com",
+    "license": "AGPL-3.0",
+    "short": "E-signatures \u2014 DocuSign alternative"
+  },
+  {
+    "name": "OpenSign",
+    "slug": "opensign",
+    "category": "Esign",
+    "repo": "OpenSignLabs/OpenSign",
+    "image": "opensign/opensign:main",
+    "home": "https://www.opensignlabs.com",
+    "license": "NOASSERTION",
+    "short": "Digital signing with audit trails"
+  },
+  {
+    "name": "Formbricks",
+    "slug": "formbricks",
+    "category": "Forms",
+    "repo": "formbricks/formbricks",
+    "image": "formbricks/formbricks",
+    "home": "https://formbricks.com",
+    "license": "NOASSERTION",
+    "short": "Surveys and in-product feedback"
+  },
+  {
+    "name": "LimeSurvey",
+    "slug": "limesurvey",
+    "category": "Forms",
+    "repo": "LimeSurvey/LimeSurvey",
+    "image": "martialblog/limesurvey",
+    "home": "https://www.limesurvey.org",
+    "license": "NOASSERTION",
+    "short": "Long-form surveys with complex branching"
+  },
+  {
+    "name": "Frappe HR",
+    "slug": "frappe-hr",
+    "category": "HR",
+    "repo": "frappe/hrms",
+    "image": "frappe/erpnext",
+    "home": "https://frappe.io/hr",
+    "license": "GPL-3.0",
+    "short": "HR and payroll built on ERPNext"
+  },
+  {
+    "name": "Horilla",
+    "slug": "horilla",
+    "category": "HR",
+    "repo": "horilla/horilla-hr",
+    "image": "horilla/horilla",
+    "home": "https://www.horilla.com/",
+    "license": "LGPL-2.1",
+    "short": "Django HR suite with payroll and onboarding"
+  },
+  {
+    "name": "OrangeHRM",
+    "slug": "orangehrm",
+    "category": "HR",
+    "repo": "orangehrm/orangehrm",
+    "image": "orangehrm/orangehrm",
+    "home": "https://www.orangehrm.com",
+    "license": "GPL-3.0",
+    "short": "HR management \u2014 leave, time, recruitment"
+  },
+  {
+    "name": "Chatwoot",
+    "slug": "chatwoot",
+    "category": "Helpdesk",
+    "repo": "chatwoot/chatwoot",
+    "image": "chatwoot/chatwoot",
+    "home": "https://www.chatwoot.com/help-center",
+    "license": "NOASSERTION",
+    "short": "Customer support inbox across chat and email"
+  },
+  {
+    "name": "FreeScout",
+    "slug": "freescout",
+    "category": "Helpdesk",
+    "repo": "freescout-help-desk/freescout",
+    "image": "tiredofit/freescout",
+    "home": "https://freescout.net",
+    "license": "AGPL-3.0",
+    "short": "Shared inbox helpdesk, Help Scout alternative"
+  },
+  {
+    "name": "UVdesk",
+    "slug": "uvdesk",
+    "category": "Helpdesk",
+    "repo": "uvdesk/community-skeleton",
+    "image": "webkul/uvdesk",
+    "home": "https://www.uvdesk.com",
+    "license": "OSL-3.0",
+    "short": "Symfony helpdesk with a ticket workflow engine"
+  },
+  {
+    "name": "Zammad",
+    "slug": "zammad",
+    "category": "Helpdesk",
+    "repo": "zammad/zammad",
+    "image": "zammad/zammad",
+    "home": "https://zammad.org",
+    "license": "AGPL-3.0",
+    "short": "Helpdesk and ticketing with strong email handling"
+  },
+  {
+    "name": "InvenTree",
+    "slug": "inventree",
+    "category": "Inventory",
+    "repo": "inventree/InvenTree",
+    "image": "inventree/inventree",
+    "home": "https://docs.inventree.org",
+    "license": "MIT",
+    "short": "Parts and stock control with a REST API"
+  },
+  {
+    "name": "Snipe-IT",
+    "slug": "snipe-it",
+    "category": "Inventory",
+    "repo": "grokability/snipe-it",
+    "image": "snipe/snipe-it",
+    "home": "https://snipeitapp.com",
+    "license": "AGPL-3.0",
+    "short": "IT asset tracking \u2014 who has which laptop"
+  },
+  {
+    "name": "SENAITE",
+    "slug": "senaite",
+    "category": "LIMS",
+    "repo": "senaite/senaite.core",
+    "image": "senaite/senaite:2.x",
+    "home": "https://senaite.com",
+    "license": "GPL-2.0",
+    "short": "Lab information management for testing labs"
+  },
+  {
+    "name": "Appsmith",
+    "slug": "appsmith",
+    "category": "LowCode",
+    "repo": "appsmithorg/appsmith",
+    "image": "appsmith/appsmith-ce",
+    "home": "https://www.appsmith.com",
+    "license": "Apache-2.0",
+    "short": "Build internal tools and admin panels visually"
+  },
+  {
+    "name": "Baserow",
+    "slug": "baserow",
+    "category": "LowCode",
+    "repo": "baserow/baserow",
+    "image": "baserow/baserow",
+    "home": "https://baserow.io",
+    "license": "NOASSERTION",
+    "short": "Airtable-style database, no-code"
+  },
+  {
+    "name": "Budibase",
+    "slug": "budibase",
+    "category": "LowCode",
+    "repo": "Budibase/budibase",
+    "image": "budibase/budibase",
+    "home": "https://budibase.com",
+    "license": "NOASSERTION",
+    "short": "Internal apps, forms and automations"
+  },
+  {
+    "name": "NocoDB",
+    "slug": "nocodb",
+    "category": "LowCode",
+    "repo": "nocodb/nocodb",
+    "image": "nocodb/nocodb",
+    "home": "https://nocodb.com",
+    "license": "NOASSERTION",
+    "short": "Turn any database into a spreadsheet UI"
+  },
+  {
+    "name": "Teable",
+    "slug": "teable",
+    "category": "LowCode",
+    "repo": "teableio/teable",
+    "image": "teableio/teable",
+    "home": "https://teable.ai",
+    "license": "NOASSERTION",
+    "short": "Spreadsheet-database hybrid on Postgres"
+  },
+  {
+    "name": "ToolJet",
+    "slug": "tooljet",
+    "category": "LowCode",
+    "repo": "ToolJet/ToolJet",
+    "image": "tooljet/tooljet",
+    "home": "https://tooljet.com",
+    "license": "AGPL-3.0",
+    "short": "Drag-and-drop internal apps over your databases"
+  },
+  {
+    "name": "listmonk",
+    "slug": "listmonk",
+    "category": "Marketing",
+    "repo": "knadh/listmonk",
+    "image": "listmonk/listmonk",
+    "home": "https://listmonk.app",
+    "license": "AGPL-3.0",
+    "short": "Newsletters and mailing lists, very fast"
+  },
+  {
+    "name": "Mautic",
+    "slug": "mautic",
+    "category": "Marketing",
+    "repo": "mautic/mautic",
+    "image": "mautic/mautic",
+    "home": "https://www.mautic.org",
+    "license": "NOASSERTION",
+    "short": "Marketing automation and campaign journeys"
+  },
+  {
+    "name": "Grafana Loki",
+    "slug": "loki",
+    "category": "Observability",
+    "repo": "grafana/loki",
+    "image": "grafana/loki",
+    "home": "https://grafana.com/oss/loki",
+    "license": "AGPL-3.0",
+    "short": "Log aggregation, queried the way Prometheus queries metrics"
+  },
+  {
+    "name": "Focalboard",
+    "slug": "focalboard",
+    "category": "Project",
+    "repo": "mattermost-community/focalboard",
+    "image": "mattermost/focalboard",
+    "home": "https://www.focalboard.com",
+    "license": "NOASSERTION",
+    "short": "Kanban boards \u2014 Trello alternative"
+  },
+  {
+    "name": "Kanboard",
+    "slug": "kanboard",
+    "category": "Project",
+    "repo": "kanboard/kanboard",
+    "image": "kanboard/kanboard",
+    "home": "https://kanboard.org",
+    "license": "MIT",
+    "short": "Minimal kanban, very light to run"
+  },
+  {
+    "name": "Leantime",
+    "slug": "leantime",
+    "category": "Project",
+    "repo": "Leantime/leantime",
+    "image": "leantime/leantime",
+    "home": "https://leantime.io",
+    "license": "AGPL-3.0",
+    "short": "Project management aimed at non-project managers"
+  },
+  {
+    "name": "OpenProject",
+    "slug": "openproject",
+    "category": "Project",
+    "repo": "opf/openproject",
+    "image": "openproject/openproject:17",
+    "home": "https://www.openproject.org",
+    "license": "GPL-3.0",
+    "short": "Classic project management with Gantt charts"
+  },
+  {
+    "name": "Vikunja",
+    "slug": "vikunja",
+    "category": "Project",
+    "repo": "go-vikunja/vikunja",
+    "image": "vikunja/vikunja",
+    "home": "https://vikunja.io",
+    "license": "AGPL-3.0",
+    "short": "To-do and project lists, list or kanban view"
+  },
+  {
+    "name": "Wekan",
+    "slug": "wekan",
+    "category": "Project",
+    "repo": "wekan/wekan",
+    "image": "wekanteam/wekan",
+    "home": "https://wekan.fi",
+    "license": "MIT",
+    "short": "Open kanban board, Meteor-based"
+  },
+  {
+    "name": "Cal.com",
+    "slug": "calcom",
+    "category": "Scheduling",
+    "repo": "calcom/cal.diy",
+    "image": "calcom/cal.com",
+    "home": "https://cal.diy",
+    "license": "MIT",
+    "short": "Scheduling and booking pages \u2014 Calendly alternative"
+  },
+  {
+    "name": "Easy!Appointments",
+    "slug": "easyappointments",
+    "category": "Scheduling",
+    "repo": "alextselegidis/easyappointments",
+    "image": "alextselegidis/easyappointments",
+    "home": "https://easyappointments.org",
+    "license": "GPL-3.0",
+    "short": "Appointment booking for service businesses"
+  },
+  {
+    "name": "Rallly",
+    "slug": "rallly",
+    "category": "Scheduling",
+    "repo": "lukevella/rallly",
+    "image": "lukevella/rallly",
+    "home": "https://rallly.co",
+    "license": "AGPL-3.0",
+    "short": "Group meeting polls, no account needed"
+  }
+]

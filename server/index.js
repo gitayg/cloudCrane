@@ -68,6 +68,7 @@ import whatsNewRoutes from './routes/whatsNew.js';
 import platformWhatsNewRoutes from './routes/platformWhatsNew.js';
 import serviceApiRoutes from './routes/serviceApi.js';
 import noticesRoutes from './routes/notices.js';
+import catalogRoutes from './routes/catalog.js';
 import { globalNotices } from './services/platformNotices.js';
 
 const PORT = process.env.PORT || 5001;
@@ -977,6 +978,7 @@ app.use('/api/apps', notificationsRoutes); // /api/apps/:slug/notifications
 // one installs no router-level middleware, and no earlier router registers a
 // pattern that would swallow /:slug/app-roles.
 app.use('/api/apps', appRolesRoutes);
+app.use('/api/catalog', catalogRoutes);  // Curated self-hostable app catalogue (requireAuth — every logged-in user)
 // Mount identity FIRST so its routes don't get caught by other middleware
 app.use('/api/identity', identityRoutes);
 app.use('/api/enhancements', enhancementsRoutes); // Enhancement requests (Bearer auth, must be before logsRoutes)

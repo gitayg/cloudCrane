@@ -7,6 +7,7 @@ import { Layout } from './components/Layout'
 import { Login } from './components/Login'
 import { Dashboard } from './pages/Dashboard'
 import { Applications } from './pages/Applications'
+import { Catalog } from './pages/Catalog'
 import { AppStudio } from './pages/AppStudio'
 import { Settings } from './pages/Settings'
 import { Docs } from './pages/Docs'
@@ -177,6 +178,10 @@ export function AdminApp() {
           <Route path="/" element={<Navigate to="/launch" replace />} />
           <Route path="/dashboard" element={<Layout><Dashboard /></Layout>} />
           <Route path="/applications" element={<Layout><Applications /></Layout>} />
+          {/* The app catalogue. requireAuth on the server, no admin gate here:
+              every logged-in user browses it, and only the deploy button is
+              conditioned on `platform.create_app` (reported by the payload). */}
+          <Route path="/catalog"     element={<Layout><Catalog /></Layout>} />
           {/* Routes moved to Settings sub-tabs in v1.27.x — keep redirects
               so old bookmarks still work. */}
           <Route path="/users-page"  element={<Navigate to="/settings#users" replace />} />
