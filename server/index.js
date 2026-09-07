@@ -286,7 +286,14 @@ app.get('/api/apps/:slug/icon', (req, res) => {
 });
 
 // Middleware
-app.use(express.json({ limit: '50mb' }));
+// `application/scim+json` is listed alongside `application/json` because RFC 7644
+// §3.1 registers it as the SCIM media type and both Okta and Entra send it on
+// every POST/PUT/PATCH. express's default `type` is the exact string
+// `application/json`, so without this the SCIM body was silently left unparsed —
+// req.body arrived as {} and every provisioning write was refused as malformed.
+// The list is exact on purpose: no `*/*` and no `application/*+json` wildcard, so
+// nothing that is rejected today starts being parsed.
+app.use(express.json({ limit: '50mb', type: ['application/json', 'application/scim+json'] }));
 app.use(express.urlencoded({ extended: true }));
 
 // CORS for dashboard — restrict to CRANE_DOMAIN when configured

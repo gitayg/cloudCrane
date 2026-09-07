@@ -6,6 +6,7 @@ import { AuditLog } from './AuditLog'
 import { BrandingTab } from '../components/BrandingTab'
 import { Mcp } from './Mcp'
 import { SkillsTab } from '../components/SkillsTab'
+import { ScimGroupMapping } from '../components/ScimGroupMapping'
 import { useMe, isAdmin } from '../hooks/useMe'
 
 function SecurityTab() {
@@ -414,6 +415,8 @@ function SecurityTab() {
           <button className="btn" onClick={generateScimToken}>Generate New Token</button>
           {scimSaved && <span className="saved-msg">Saved ✓</span>}
         </div>
+
+        <ScimGroupMapping baseUrl={scim.base_url} />
       </div>
     </>
   )
@@ -966,7 +969,7 @@ function MailTab() {
       </p>
 
       <label>Sender address (Graph mailbox)</label>
-      <FocusInput value={cfg.from_address} onChange={e => setCfg({ ...cfg, from_address: e.target.value })} placeholder="aimi@opswat.com" />
+      <FocusInput value={cfg.from_address} onChange={e => setCfg({ ...cfg, from_address: e.target.value })} placeholder="appcrane@example.com" />
 
       <label>Default display name</label>
       <FocusInput value={cfg.from_name} onChange={e => setCfg({ ...cfg, from_name: e.target.value })} placeholder="AIMI" />
