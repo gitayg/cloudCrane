@@ -646,3 +646,58 @@ test('the flag is readable by an ordinary user, or the nav cannot honour it', as
   const { settingVisibility, AUTHED } = await import('../server/utils/settingsVisibility.js');
   assert.equal(settingVisibility('catalog_enabled'), AUTHED);
 });
+
+// ---------------------------------------------------------------------------
+// Image size
+//
+// It rides along on the /tags response the version already needs, so it must
+// cost no extra request — an anonymous Docker Hub caller has a small budget and
+// a second round trip per app would spend it for a nice-to-have column.
+// ---------------------------------------------------------------------------
+
+test('image size is read from the tag actually shown, and costs no extra request', async () => {
+  await reset();
+  const entry = HUB_ENTRY;
+  assert.ok(entry, 'manifest has no Docker Hub entry to exercise');
+  const { namespace, name } = dockerHubRepo(entry.image);
+  const hubRepo = `${namespace}/${name}`;
+
+  let tagCalls = 0;
+  setFetchImpl(router([
+    [`/repositories/${hubRepo}/tags`, (u) => { tagCalls++; return jsonRes(u, 200, { results: [
+      { name: 'latest', last_updated: '2026-01-01T00:00:00Z', full_size: 999 },
+      { name: '7.4.1', last_updated: '2026-01-02T00:00:00Z', full_size: 123456789 },
+    ] }); }],
+    [`/repositories/${hubRepo}`, (u) => jsonRes(u, 200, { pull_count: 42 })],
+    ['api.github.com', (u) => jsonRes(u, 200, {})],
+  ]));
+
+  await refreshEnrichment({ force: true });
+  const en = catalogService.getEnrichment(entry.slug);
+
+  // `latest` is floating and is not the tag shown, so its 999 must not be the
+  // size either — otherwise the number describes an image nobody is looking at.
+  assert.equal(en?.image_version?.value, '7.4.1');
+  assert.equal(en?.image_size, 123456789,
+    'the size must belong to the same tag the version column shows');
+  assert.equal(tagCalls, 1, 'size must not add a second request to the tags endpoint');
+});
+
+test('a tag with no size reports no size rather than zero', async () => {
+  await reset();
+  const entry = HUB_ENTRY;
+  const { namespace, name } = dockerHubRepo(entry.image);
+  const hubRepo = `${namespace}/${name}`;
+  setFetchImpl(router([
+    [`/repositories/${hubRepo}/tags`, (u) => jsonRes(u, 200, { results: [
+      { name: '2.0.0', last_updated: '2026-01-02T00:00:00Z' },
+    ] })],
+    [`/repositories/${hubRepo}`, (u) => jsonRes(u, 200, { pull_count: 7 })],
+    ['api.github.com', (u) => jsonRes(u, 200, {})],
+  ]));
+  await refreshEnrichment({ force: true });
+  const en = catalogService.getEnrichment(entry.slug);
+  assert.equal(en?.image_version?.value, '2.0.0');
+  assert.equal(en?.image_size, null,
+    'a missing size is unknown, not 0 MB — 0 would render as a real, tiny image');
+});

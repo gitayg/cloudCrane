@@ -34,6 +34,7 @@ interface Enrichment {
   pulls?: number | null
   github_version?: CatalogVersion | null
   image_version?: CatalogVersion | null
+  image_size?: number | null
   sources?: { github?: string; image?: string }
   fetched_at?: string | null
 }
@@ -107,6 +108,15 @@ interface VersionsResponse {
 // ---------------------------------------------------------------------------
 
 /** 12345 -> '12.3k'. Null for anything that is not a real number. */
+function fmtSize(n: number | null | undefined): string | null {
+  // Docker Hub's `full_size` is the COMPRESSED size — the bytes the host pulls,
+  // not what the image occupies unpacked. Rendered in decimal MB/GB to match how
+  // registries and hosting providers quote transfer.
+  if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) return null
+  if (n >= 1e9) return (n / 1e9).toFixed(1).replace(/\.0$/, '') + ' GB'
+  return Math.round(n / 1e6) + ' MB'
+}
+
 function fmtCount(n: number | null | undefined): string | null {
   if (typeof n !== 'number' || !Number.isFinite(n)) return null
   const trim = (s: string) => s.replace(/\.0$/, '')
@@ -180,7 +190,7 @@ const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/
 // Mirrors the server's branch check in routes/apps.js — branch flows into a shell.
 const BRANCH_RE = /^[A-Za-z0-9._/-]{1,200}$/
 
-type SortKey = 'name' | 'category' | 'stars' | 'pulls'
+type SortKey = 'name' | 'category' | 'stars' | 'pulls' | 'size'
 type SortDir = 'asc' | 'desc'
 
 // ---------------------------------------------------------------------------
@@ -281,6 +291,8 @@ export function Catalog() {
           return dir * (num(a.enrichment?.stars) - num(b.enrichment?.stars)) || a.name.localeCompare(b.name)
         case 'pulls':
           return dir * (num(a.enrichment?.pulls) - num(b.enrichment?.pulls)) || a.name.localeCompare(b.name)
+        case 'size':
+          return dir * (num(a.enrichment?.image_size) - num(b.enrichment?.image_size)) || a.name.localeCompare(b.name)
         default:
           return dir * a.name.localeCompare(b.name)
       }
@@ -291,7 +303,7 @@ export function Catalog() {
     if (key === sortKey) { setSortDir(d => (d === 'asc' ? 'desc' : 'asc')); return }
     setSortKey(key)
     // Counts read best largest-first; names read best A→Z.
-    setSortDir(key === 'stars' || key === 'pulls' ? 'desc' : 'asc')
+    setSortDir(key === 'stars' || key === 'pulls' || key === 'size' ? 'desc' : 'asc')
   }
 
   const openInstalled = (ref: InstalledRef) => {
@@ -409,17 +421,18 @@ export function Catalog() {
               {th('category', 'Category', { minWidth: 110 })}
               {th('stars', 'Stars', { minWidth: 80 })}
               {th('pulls', 'Pulls', { minWidth: 90 })}
+              {th('size', 'Size', { minWidth: 80 })}
               <th style={{ minWidth: 190 }}>Version</th>
               <th style={{ minWidth: 150 }}>Status</th>
             </tr>
           </thead>
           <tbody>
             {entries === null && (
-              <tr><td colSpan={8} style={{ color: 'var(--dim)', padding: '18px 8px' }}>Loading catalogue…</td></tr>
+              <tr><td colSpan={9} style={{ color: 'var(--dim)', padding: '18px 8px' }}>Loading catalogue…</td></tr>
             )}
             {entries !== null && visible.length === 0 && (
               <tr>
-                <td colSpan={8} style={{ color: 'var(--dim)', padding: '18px 8px' }}>
+                <td colSpan={9} style={{ color: 'var(--dim)', padding: '18px 8px' }}>
                   {entries.length === 0
                     ? 'The catalogue is empty — the manifest could not be read on the server.'
                     : 'No app matches this search.'}
@@ -468,6 +481,7 @@ function CatalogRow({ entry, expanded, onToggle, canCreate, onInstall, onOpen }:
   const en = entry.enrichment || null
   const stars = fmtCount(en?.stars)
   const pulls = fmtCount(en?.pulls)
+  const size = fmtSize(en?.image_size)
   const installed = entry.installed || []
   const gh = repoUrl(entry.repo)
   const hub = imageUrl(entry.image)
@@ -517,6 +531,11 @@ function CatalogRow({ entry, expanded, onToggle, canCreate, onInstall, onOpen }:
             ? <span title={`${en?.pulls?.toLocaleString()} Docker Hub pulls — CI runs and layer re-pulls count too, so read it as an order of magnitude`}>⇩ {pulls}</span>
             : <span style={{ color: 'var(--dim)' }} title={absenceReason(en?.sources?.image, 'image')}>—</span>}
         </td>
+        <td style={{ whiteSpace: 'nowrap' }}>
+          {size
+            ? <span title={`${en?.image_size?.toLocaleString()} bytes compressed — the download, not the unpacked size on disk`}>{size}</span>
+            : <span style={{ color: 'var(--dim)' }} title={absenceReason(en?.sources?.image, 'image')}>—</span>}
+        </td>
         <td><VersionCell entry={entry} /></td>
         <td>
           {installed.length > 0 ? (
@@ -548,12 +567,12 @@ function CatalogRow({ entry, expanded, onToggle, canCreate, onInstall, onOpen }:
       {expanded && (
         <tr className="apps-row-drill">
           {/* The table is wider than the viewport and .apps-table-wrap scrolls
-              horizontally, so a colSpan={8} cell is as wide as the TABLE, not the
+              horizontally, so a colSpan={9} cell is as wide as the TABLE, not the
               screen — its right-hand content ends up off-screen. `position: sticky;
               left: 0` pins the panel to the visible left edge while the table
               scrolls under it, and the width cap stops it stretching to the full
               table width. */}
-          <td colSpan={8} style={{ padding: 0 }}>
+          <td colSpan={9} style={{ padding: 0 }}>
             <div style={{
               position: 'sticky', left: 0,
               width: 'min(100%, 1040px)',

@@ -334,16 +334,30 @@ export async function fetchImageFacts(imageRef) {
   const pulls = repoRes.ok && Number.isFinite(repoRes.data?.pull_count) ? repoRes.data.pull_count : null;
 
   let version = null;
+  let size = null;
   if (tagsRes.ok && Array.isArray(tagsRes.data?.results)) {
     const named = tagsRes.data.results
-      .map(t => ({ name: t?.name, last_updated: t?.last_updated || null }))
+      .map(t => ({ name: t?.name, last_updated: t?.last_updated || null, full_size: t?.full_size }))
       .filter(t => typeof t.name === 'string' && t.name);
     const concrete = named.find(t => !FLOATING_TAGS.has(t.name.toLowerCase()));
-    if (concrete) version = { value: concrete.name, kind: 'tag', published_at: concrete.last_updated };
+    if (concrete) {
+      version = { value: concrete.name, kind: 'tag', published_at: concrete.last_updated };
+      // The size of the tag we are actually SHOWING, not of some other tag —
+      // otherwise the number describes an image the reader is not looking at.
+      //
+      // `full_size` is Docker Hub's COMPRESSED size: what the host downloads,
+      // not what it occupies once unpacked. On-disk is materially larger, so
+      // this is labelled as a download size wherever it is rendered.
+      //
+      // It rides along on the /tags response the version already needed, so it
+      // costs no extra request. That matters: an anonymous Docker Hub caller has
+      // a small budget and a second round trip per app would eat it.
+      if (Number.isFinite(concrete.full_size) && concrete.full_size > 0) size = concrete.full_size;
+    }
   }
 
   const source = repoRes.ok || tagsRes.ok ? 'dockerhub' : (repoRes.reason || tagsRes.reason || 'error');
-  return { pulls, version, source };
+  return { pulls, version, size, source };
 }
 
 // ---------------------------------------------------------------------------
@@ -419,6 +433,7 @@ export async function refreshEnrichment({ force = false } = {}) {
         pulls: img.pulls !== null ? img.pulls : (prev?.pulls ?? null),
         github_version: gh.version || prev?.github_version || null,
         image_version: img.version || prev?.image_version || null,
+        image_size: Number.isFinite(img.size) ? img.size : (prev?.image_size ?? null),
         sources: { github: gh.source, image: img.source },
         fetched_at: new Date().toISOString(),
       });
