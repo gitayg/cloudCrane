@@ -1,0 +1,290 @@
+{
+  "count": 57,
+  "tools": [
+    {
+      "name": "appcrane_approve_access_request",
+      "requiredRole": "any",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_cat",
+      "requiredRole": "any",
+      "readOnly": true
+    },
+    {
+      "name": "appcrane_check_resource_limits",
+      "requiredRole": "admin",
+      "readOnly": true
+    },
+    {
+      "name": "appcrane_cp",
+      "requiredRole": "app_admin",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_create_app",
+      "requiredRole": "create_app",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_create_app_role",
+      "requiredRole": "any",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_create_managed_app",
+      "requiredRole": "create_app",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_deny_access_request",
+      "requiredRole": "any",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_deploy",
+      "requiredRole": "any",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_deploy_artifact",
+      "requiredRole": "any",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_get_app",
+      "requiredRole": "any",
+      "readOnly": true
+    },
+    {
+      "name": "appcrane_get_app_ingress",
+      "requiredRole": "any",
+      "readOnly": true
+    },
+    {
+      "name": "appcrane_get_backup_status",
+      "requiredRole": "admin",
+      "readOnly": true
+    },
+    {
+      "name": "appcrane_get_deploy_log",
+      "requiredRole": "any",
+      "readOnly": true
+    },
+    {
+      "name": "appcrane_get_guide",
+      "requiredRole": "any",
+      "readOnly": true
+    },
+    {
+      "name": "appcrane_get_health",
+      "requiredRole": "any",
+      "readOnly": true
+    },
+    {
+      "name": "appcrane_get_logs",
+      "requiredRole": "any",
+      "readOnly": true
+    },
+    {
+      "name": "appcrane_get_secret",
+      "requiredRole": "app_admin",
+      "readOnly": true
+    },
+    {
+      "name": "appcrane_grant_app_access",
+      "requiredRole": "any",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_list_access_requests",
+      "requiredRole": "any",
+      "readOnly": true
+    },
+    {
+      "name": "appcrane_list_app_members",
+      "requiredRole": "any",
+      "readOnly": true
+    },
+    {
+      "name": "appcrane_list_app_roles",
+      "requiredRole": "any",
+      "readOnly": true
+    },
+    {
+      "name": "appcrane_list_apps",
+      "requiredRole": "any",
+      "readOnly": true
+    },
+    {
+      "name": "appcrane_list_cron",
+      "requiredRole": "app_admin",
+      "readOnly": true
+    },
+    {
+      "name": "appcrane_list_releases",
+      "requiredRole": "any",
+      "readOnly": true
+    },
+    {
+      "name": "appcrane_list_requests",
+      "requiredRole": "any",
+      "readOnly": true
+    },
+    {
+      "name": "appcrane_ls",
+      "requiredRole": "any",
+      "readOnly": true
+    },
+    {
+      "name": "appcrane_managed_assemble",
+      "requiredRole": "app_admin",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_managed_patch",
+      "requiredRole": "app_admin",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_managed_push_chunk",
+      "requiredRole": "app_admin",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_memory_budget",
+      "requiredRole": "admin",
+      "readOnly": true
+    },
+    {
+      "name": "appcrane_platform_policy",
+      "requiredRole": "admin",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_promote",
+      "requiredRole": "any",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_push_staged_file",
+      "requiredRole": "any",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_push_to_managed_app",
+      "requiredRole": "app_admin",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_rename_app",
+      "requiredRole": "platform_admin",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_reveal_secret",
+      "requiredRole": "app_admin",
+      "readOnly": true
+    },
+    {
+      "name": "appcrane_revoke_app_access",
+      "requiredRole": "any",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_rollback",
+      "requiredRole": "any",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_run_backup_now",
+      "requiredRole": "admin",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_run_cron_now",
+      "requiredRole": "app_admin",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_scan_app",
+      "requiredRole": "admin",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_scan_report",
+      "requiredRole": "admin",
+      "readOnly": true
+    },
+    {
+      "name": "appcrane_set_app_icon",
+      "requiredRole": "any",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_set_app_ingress",
+      "requiredRole": "admin",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_set_app_meta",
+      "requiredRole": "any",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_set_backup_config",
+      "requiredRole": "admin",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_set_request_status",
+      "requiredRole": "app_admin",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_set_secret",
+      "requiredRole": "app_admin",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_set_user_app_roles",
+      "requiredRole": "any",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_stage_assemble",
+      "requiredRole": "any",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_stage_chunk",
+      "requiredRole": "any",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_stage_from_url",
+      "requiredRole": "any",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_top_apps",
+      "requiredRole": "admin",
+      "readOnly": true
+    },
+    {
+      "name": "appcrane_top_users",
+      "requiredRole": "admin",
+      "readOnly": true
+    },
+    {
+      "name": "appcrane_update_app",
+      "requiredRole": "admin",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_wait_deploy",
+      "requiredRole": "any",
+      "readOnly": true
+    }
+  ]
+}
