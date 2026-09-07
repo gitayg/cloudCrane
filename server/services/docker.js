@@ -281,7 +281,7 @@ export async function buildImage({ slug, env, contextDir, commitHash, appBasePat
  * already allocated" — and the loser could be production. Sandbox stays
  * loopback-only and therefore cannot take the port production's clients use.
  */
-function publicPublishTargets(slug, env) {
+function publicPublishTargets(slug, env, containerPort) {
   // v2.46.0: sandbox can publish too, on its OWN port. The old rule was
   // `env !== 'production' -> null`, justified by "one public_port, two
   // containers, so the second docker run dies with 'port is already
@@ -298,11 +298,47 @@ function publicPublishTargets(slug, env) {
     .get(slug);
   const host = publicPortForApp(app, env);
   if (host === null) return null;
-  return { host, container: dataPlanePortForApp(app, env) };
+  const container = dataPlanePortForApp(app, env);
+  // tcpIngress answers CONTROL_PLANE_PORT for a pure-tcp app because "the whole
+  // container is the data plane, and it is told PORT=3000". That premise is a
+  // property of an image AppCrane built. A pulled image listens where its
+  // author put it (postgres on 5432, odoo on 8069) and does not read $PORT, so
+  // for a source_type='image' tcp app the publish would target a port nothing
+  // is bound to and every raw-TCP client would get connection-refused.
+  //
+  // Only the pure-tcp answer is rewritten: a 'dual' app's container side is its
+  // own data_plane_port, which validateDataPlanePort() refuses to let equal
+  // CONTROL_PLANE_PORT — so `container === CONTAINER_PORT` identifies the
+  // pure-tcp case exactly, and a dual app's data plane is left where the
+  // operator configured it. With the default containerPort this is a no-op, so
+  // no existing app's argv moves.
+  if (container === CONTAINER_PORT && containerPort !== CONTAINER_PORT) {
+    return { host, container: containerPort };
+  }
+  return { host, container };
 }
 
-export async function startApp({ slug, env, image, hostPort, envVars = {}, volumes = [], memoryMb = 512, cpus = 0.5, addHostGateway = false }) {
+// v2.59.0: the port inside the container is a parameter, not a constant.
+//
+// It was `-p 127.0.0.1:<hostPort>:3000` with `PORT=3000` in the environment,
+// which is a contract only an image AppCrane built can keep: the generated
+// Dockerfile and the Node apps behind it listen on $PORT and default to 3000.
+// A pulled third-party image obeys neither half — odoo listens on 8069 and
+// ignores $PORT entirely — so every image-source deploy published a port with
+// nothing behind it and died at the health probe with no hint as to why.
+//
+// Optional, defaulting to CONTAINER_PORT, so every existing caller (deployer.js,
+// routes/deploy.js, healthChecker.js) is byte-for-byte unchanged.
+export async function startApp({ slug, env, image, hostPort, envVars = {}, volumes = [], memoryMb = 512, cpus = 0.5, addHostGateway = false, containerPort = CONTAINER_PORT }) {
   const name = containerName(slug, env);
+
+  // apps.container_port is nullable and NULL MEANS the 3000 default (migration
+  // 083). A default parameter only fires on `undefined`, so a caller reading the
+  // column straight out of the row and passing it through would otherwise emit
+  // `-p 127.0.0.1:<hostPort>:null` and `PORT=null` — a container that starts,
+  // publishes nothing reachable, and fails the health probe as if the app were
+  // broken. Normalised here so every caller can pass the column as-is.
+  const port = Number.isInteger(containerPort) ? containerPort : CONTAINER_PORT;
 
   // Before the old container goes away, so a host that cannot provide the
   // isolated network fails with that explained and the app still running,
@@ -364,7 +400,7 @@ export async function startApp({ slug, env, image, hostPort, envVars = {}, volum
     // harmless to node:20 and nginx:alpine; --cap-drop=ALL was measured and
     // rejected below.
     '--cap-drop', 'NET_RAW',
-    '-p', `127.0.0.1:${hostPort}:${CONTAINER_PORT}`,
+    '-p', `127.0.0.1:${hostPort}:${port}`,
     '--log-opt', 'max-size=10m',
     '--log-opt', 'max-file=3',
   ];
@@ -403,7 +439,7 @@ export async function startApp({ slug, env, image, hostPort, envVars = {}, volum
   // AppCrane publishes the port; it does NOT open the host firewall. That is
   // deliberately a separate operator step so a mis-click in the dashboard
   // cannot put an app on the internet.
-  const publish = publicPublishTargets(slug, env);
+  const publish = publicPublishTargets(slug, env, port);
   if (publish) {
     args.push('-p', `0.0.0.0:${publish.host}:${publish.container}`);
   }
@@ -422,7 +458,13 @@ export async function startApp({ slug, env, image, hostPort, envVars = {}, volum
 
   const runtimeEnv = {
     ...envVars,
-    PORT: String(CONTAINER_PORT),
+    // Tracks the published port rather than staying pinned at 3000. An image
+    // that DOES honour $PORT (most buildpack output, and AppCrane's own builds)
+    // must be told the same number the -p above targets; telling it 3000 while
+    // publishing 8069 is the exact failure this change exists to remove, just
+    // inverted. An image that ignores $PORT — odoo, postgres, nginx — is
+    // unaffected either way.
+    PORT: String(port),
     NODE_ENV: env === 'production' ? 'production' : 'development',
     DATA_DIR: '/data',  // platform guarantee — every app container has /data mounted
   };
@@ -683,20 +725,98 @@ export async function containerResourcesBySlug() {
 }
 
 export async function pruneOldImages(slug, env, keep = 2) {
-  try {
-    const filters = ['--filter', `label=slug=${slug}`];
-    if (env) filters.push('--filter', `label=env=${env}`);
-    const out = await dockerExec(['images', ...filters, '--format', '{{.ID}} {{.CreatedAt}}']);
-    if (!out) return;
-    const rows = out.split('\n').map(l => {
-      const sp = l.indexOf(' ');
-      return { id: l.slice(0, sp), created: l.slice(sp + 1) };
-    });
-    rows.sort((a, b) => b.created.localeCompare(a.created));
-    for (const row of rows.slice(keep)) {
-      try { await dockerExec(['rmi', '-f', row.id]); } catch (e) {}
-    }
-  } catch (e) {}
+  // Two independent passes, and the second must run even when the first finds
+  // nothing. It used to `return` on an empty listing from inside this try — with
+  // the pulled-image pass bolted on after it, that early return would skip it
+  // for exactly the apps that need it, since an image app's label filter always
+  // matches zero rows.
+  await pruneOldBuiltImages(slug, env, keep).catch(() => {});
+
+  // v2.59.0: the pass above reclaims nothing for a source_type='image' app, so
+  // every redeploy of a moving tag ('odoo:19' picking up a patch release) left
+  // the previous image on disk forever. `label=slug=` is written by
+  // buildImage()'s `docker build --label`; a PULLED image carries whatever labels its
+  // author baked in and never ours, so the filter matches zero rows and the
+  // loop has nothing to do.
+  //
+  // Two ways out, and the labelling one does not work here. `docker run --label`
+  // labels the CONTAINER, and the container is not what fills the disk — the
+  // image outlives it. Labelling the IMAGE means building a derived one
+  // (`FROM <ref>` + LABEL), which (a) produces a new image id, so
+  // deployments.image_ref would record a digest that is not the digest the
+  // registry serves and provenance stops meaning anything, and (b) reintroduces
+  // a build step to the one source type whose entire purpose is not having one.
+  //
+  // So the prune is extended instead: for an image app, scope by REPOSITORY —
+  // the thing every tag and digest of that image shares — and apply the same
+  // keep-N-newest rule.
+  await pruneOldPulledImages(slug, keep).catch(() => {});
+}
+
+/** Keep-N-newest over the images buildImage() tagged and labelled for this app. */
+async function pruneOldBuiltImages(slug, env, keep) {
+  const filters = ['--filter', `label=slug=${slug}`];
+  if (env) filters.push('--filter', `label=env=${env}`);
+  const out = await dockerExec(['images', ...filters, '--format', '{{.ID}} {{.CreatedAt}}']);
+  if (!out) return;
+  const rows = out.split('\n').map(l => {
+    const sp = l.indexOf(' ');
+    return { id: l.slice(0, sp), created: l.slice(sp + 1) };
+  });
+  rows.sort((a, b) => b.created.localeCompare(a.created));
+  for (const row of rows.slice(keep)) {
+    try { await dockerExec(['rmi', '-f', row.id]); } catch (e) {}
+  }
+}
+
+/**
+ * Keep-N-newest over the images pulled for an image-source app's repository.
+ *
+ * Repository scope is wider than one app: two apps on 'odoo:19' share a
+ * repository and its image ids. What makes `rmi -f` safe anyway is the in-use
+ * exclusion below — any image referenced by a container, running or stopped,
+ * for any app, is skipped outright. The worst remaining case is removing an
+ * image a second image-app has configured but has no container for, and that
+ * app re-pulls on its next deploy.
+ *
+ * --no-trunc throughout: `docker images` prints 12-char ids by default while
+ * `docker ps` prints 'sha256:<64hex>', and comparing the two forms is how a
+ * still-in-use image gets deleted anyway.
+ */
+async function pruneOldPulledImages(slug, keep) {
+  const app = getDb()
+    .prepare('SELECT source_type, image_ref FROM apps WHERE slug = ?')
+    .get(slug);
+  if (!app || app.source_type !== 'image' || !app.image_ref) return;
+
+  const { parseImageRef } = await import('./imageSource.js');
+  const { registry, name } = parseImageRef(app.image_ref);
+  const repo = registry ? `${registry}/${name}` : name;
+
+  const listed = await dockerExec(['images', repo, '--no-trunc', '--format', '{{.ID}} {{.CreatedAt}}']);
+  if (!listed) return;
+
+  const psOut = await dockerExec(['ps', '-a', '--no-trunc', '--format', '{{.ImageID}}']).catch(() => '');
+  const inUse = new Set(psOut.split('\n').map(l => l.trim()).filter(Boolean));
+
+  const rows = [];
+  const seen = new Set();
+  for (const line of listed.split('\n')) {
+    const sp = line.indexOf(' ');
+    if (sp < 1) continue;
+    const id = line.slice(0, sp);
+    // One row per TAG, so a multi-tagged image appears several times. Counting
+    // it twice would make `keep` retain fewer distinct images than asked.
+    if (seen.has(id)) continue;
+    seen.add(id);
+    rows.push({ id, created: line.slice(sp + 1) });
+  }
+  rows.sort((a, b) => b.created.localeCompare(a.created));
+
+  for (const row of rows.slice(keep)) {
+    if (inUse.has(row.id)) continue;
+    try { await dockerExec(['rmi', '-f', row.id]); } catch (e) {}
+  }
 }
 
 // Reclaim dangling/untagged images left behind by failed or interrupted builds.

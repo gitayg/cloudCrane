@@ -395,6 +395,53 @@ export async function rollbackApp(app, env, deploymentId, userId) {
   }
 
   if (!target) throw new AppError('No previous deployment to roll back to', 404, 'NO_ROLLBACK_TARGET');
+
+  // An image app rolls back by re-running the digest it ran before, and it has
+  // to be handled BEFORE the release_path check below — an image deploy never
+  // writes a release directory, so that check would reject every image
+  // rollback as a "pre-rollback-support deploy". Without this branch an image
+  // app could be deployed and never recovered, which is the one thing a deploy
+  // platform cannot leave missing.
+  if (app.source_type === 'image') {
+    if (!target.image_ref) {
+      throw new AppError(
+        `Deployment #${target.id} has no image_ref recorded, so there is no digest to restore. ` +
+        `Deploy the app once more to record one, or roll back to a deployment that has it.`,
+        409, 'NO_IMAGE_REF',
+      );
+    }
+
+    // target.image_ref is already the digest-pinned ref deployApp resolved and
+    // started. It is passed through as opts.imageRef rather than letting
+    // deployApp re-read apps.image_ref, because the app row holds the
+    // operator's CURRENT request — if the tag moved (or was edited to a
+    // different image) since that deployment, re-resolving it would "roll
+    // back" to bytes nobody has ever run here.
+    const rollbackInsert = db.prepare(`
+      INSERT INTO deployments (app_id, env, version, status, commit_hash, image_ref, deployed_by, log)
+      VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)
+    `).run(app.id, env, target.version, target.commit_hash, target.image_ref, userId,
+      `Rollback to deployment #${target.id} — restarting image ${target.image_ref}`);
+    const newId = rollbackInsert.lastInsertRowid;
+
+    db.prepare("UPDATE deployments SET status = 'rolled_back' WHERE app_id = ? AND env = ? AND status = 'live' AND id != ?")
+      .run(app.id, env, newId);
+
+    const { getPortsForSlot } = await import('./portAllocator.js');
+    const fullApp = db.prepare('SELECT * FROM apps WHERE id = ?').get(app.id);
+    const ports = getPortsForSlot(fullApp.slot);
+    await deployApp(newId, fullApp, env, ports, {
+      imageRef: target.image_ref,
+      commitHash: target.commit_hash,
+    });
+
+    log.info(`Rollback: ${app.slug}/${env} → deployment #${target.id} (image ${target.image_ref}) by user ${userId}`);
+    return {
+      deployment_id: newId, rollback_to: target.id, version: target.version,
+      commit_hash: target.commit_hash, image_ref: target.image_ref,
+    };
+  }
+
   if (!target.release_path) throw new AppError('Target deployment has no release_path recorded (pre-rollback-support deploy)', 409, 'NO_RELEASE_PATH');
   if (!existsSync(target.release_path)) throw new AppError(`Release directory missing on disk: ${target.release_path}`, 410, 'RELEASE_GONE');
 
@@ -479,6 +526,49 @@ export async function promoteApp(app, userId) {
 
   const { getPortsForSlot } = await import('./portAllocator.js');
   const prodPorts = getPortsForSlot(app.slot);
+
+  // Image apps promote by running the EXACT digest sandbox ran. Both branches
+  // below assume a tree — one rebuilds from a commit, the other copies a
+  // release directory — and an image app has neither, so it would fall through
+  // to the copy path's "Sandbox release directory missing on disk" error.
+  //
+  // No rebuild question arises here: the github branch rebuilds so the bundler
+  // bakes the prod base path, and a prebuilt image has no build step to bake
+  // anything into. The bytes tested in sandbox are the bytes promoted.
+  if (app.source_type === 'image') {
+    if (!sandboxDeploy.image_ref) {
+      throw new AppError(
+        `Sandbox deployment #${sandboxDeploy.id} has no image_ref recorded, so there is no digest to promote. ` +
+        `Redeploy sandbox to record one.`,
+        409, 'NO_IMAGE_REF',
+      );
+    }
+
+    const ins = db.prepare(`
+      INSERT INTO deployments (app_id, env, version, status, commit_hash, image_ref, deployed_by, log)
+      VALUES (?, 'production', ?, 'pending', ?, ?, ?, ?)
+    `).run(app.id, sandboxDeploy.version, sandboxDeploy.commit_hash, sandboxDeploy.image_ref, userId,
+      `Promote from sandbox #${sandboxDeploy.id} — same image ${sandboxDeploy.image_ref}`);
+    const newDeployId = ins.lastInsertRowid;
+
+    const fullApp = db.prepare('SELECT * FROM apps WHERE id = ?').get(app.id);
+    // Fire-and-forget for the same reason as the branches below: an awaited
+    // deployApp outlives the MCP socket timeout and the caller sees a closed
+    // connection for a promotion that succeeded.
+    deployApp(newDeployId, fullApp, 'production', prodPorts, {
+      imageRef: sandboxDeploy.image_ref,
+      commitHash: sandboxDeploy.commit_hash,
+    }).catch(err => {
+      log.error(`Promote (image) ${newDeployId} for ${app.slug} failed: ${err.message}`);
+    });
+
+    log.info(`Promote: ${app.slug} sandbox #${sandboxDeploy.id} → production (image ${sandboxDeploy.image_ref}, deployment #${newDeployId}) by user ${userId}`);
+    return {
+      deployment_id: newDeployId, status: 'pending', mode: 'image',
+      version: sandboxDeploy.version, from_sandbox: sandboxDeploy.id,
+      image_ref: sandboxDeploy.image_ref,
+    };
+  }
 
   // GitHub-sourced apps: fresh production build so the bundler picks up
   // VITE_BASE_PATH=/<slug>/ instead of the sandbox's /<slug>-sandbox/.
@@ -601,6 +691,16 @@ export async function promoteApp(app, userId) {
 
 export async function deployApp(deployId, app, env, ports, opts = {}) {
   const db = getDb();
+
+  // An image app has no release tree — no clone, no bundle, no `current`
+  // symlink target. Every step below that reads a file out of a release
+  // directory is skipped on this flag rather than being made to tolerate a
+  // missing directory, because "tolerate" would mean an image deploy silently
+  // taking the defaults meant for a source tree (no dist check, a generated
+  // Dockerfile, a symlink verification that throws "has no package.json or
+  // deployhub.json" on a directory that was never supposed to exist).
+  const isImageDeploy = app.source_type === 'image';
+
   const dataDir = resolve(process.env.DATA_DIR || './data');
   const appDir = resolve(join(dataDir, 'apps', app.slug, env));
   const releasesDir = resolve(join(appDir, 'releases'));
@@ -668,8 +768,59 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
     // dashboard / MCP deploy path left it NULL, so the dialog rendered a
     // version pill with no body.
     let commitMessage = null;
+    // The digest-pinned reference this deploy actually starts, and the version
+    // string to record for it. Both stay null for every source type that builds
+    // from a tree.
+    let pinnedImageRef = null;
+    let imageVersion = null;
 
-    if (opts.preExtractedDir) {
+    // FIRST, ahead of opts.preExtractedDir. rollbackApp and promoteApp both
+    // pass a pre-extracted directory for tree-based apps, and an image app has
+    // no directory to pass — so if this branch came second, an image app's
+    // rollback would either land in the release-directory chain or be
+    // unreachable. source_type is the fact that decides; the options object
+    // only narrows WHICH image.
+    if (isImageDeploy) {
+      // rollback/promote pass the exact digest ref recorded against the
+      // deployment being restored. app.image_ref is the operator's request
+      // ('odoo:19'), which may point at different bytes today than it did when
+      // that deployment ran — using it for a rollback would restore a version
+      // nobody chose.
+      const requestedRef = opts.imageRef || app.image_ref;
+      if (!requestedRef) {
+        throw new Error(
+          `App '${app.slug}' has source_type='image' but no image_ref set. ` +
+          `Run appcrane_update_app slug='${app.slug}' image_ref='<name>:<tag>' ` +
+          `(e.g. 'odoo:19' or 'ghcr.io/owner/app@sha256:<hex>').`
+        );
+      }
+
+      const { parseImageRef, pullImage, resolveDigest } = await import('./imageSource.js');
+      const parsed = parseImageRef(requestedRef);
+
+      appendLog(`Pulling image ${requestedRef} …`);
+      await pullImage(requestedRef);
+
+      // A tag is a moving pointer on purpose — re-deploying 'odoo:19' is how
+      // you pick up a patch release. That makes the tag useless as a record of
+      // what ran, so the digest is resolved here and the CONTAINER IS STARTED
+      // FROM THE DIGEST, not from the tag. Recording the digest while running
+      // the tag would be a false record: the publisher can move the tag between
+      // this inspect and the `docker run` below, and the deployment row would
+      // then name bytes that were never started.
+      const digest = await resolveDigest(requestedRef);
+      pinnedImageRef = `${parsed.registry ? `${parsed.registry}/` : ''}${parsed.name}@${digest}`;
+      commitHash = digest;
+
+      appendLog(`Resolved ${requestedRef} → ${pinnedImageRef}`);
+      db.prepare('UPDATE deployments SET image_ref = ? WHERE id = ?').run(pinnedImageRef, deployId);
+
+      // deployments.version has to say something and there is no package.json
+      // to read it out of. The tag is the only human-meaningful version an
+      // image carries; a digest-only ref has no tag, so it falls back to the
+      // short digest rather than the literal 'unknown'.
+      imageVersion = parsed.tag || digest.slice('sha256:'.length, 'sha256:'.length + 12);
+    } else if (opts.preExtractedDir) {
       releaseDir = resolve(opts.preExtractedDir);
       if (!releaseDir.startsWith(dataDir)) throw new Error('Security: preExtractedDir is outside data directory');
       commitHash = opts.commitHash || 'unknown';
@@ -912,6 +1063,10 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
     // extension. Idempotent on each deploy; the manual dashboard upload
     // still works — whichever one ran most recently wins, since both
     // write to the same path.
+    // Skipped for an image deploy: the convention is a file committed at
+    // public/icon.png in the app's own repo, and an image app has no repo and
+    // no release dir to look in.
+    if (!isImageDeploy) {
     try {
       const ICON_PREFERENCE = ['png', 'svg', 'webp', 'jpg', 'jpeg', 'gif'];
       const found = ICON_PREFERENCE
@@ -938,11 +1093,19 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
     } catch (e) {
       appendLog(`WARNING: icon pickup failed: ${e.message}`);
     }
+    }
 
     // Read deployhub.json manifest (everything except `version`)
     let manifest = {};
-    const manifestPath = join(releaseDir, 'deployhub.json');
-    if (existsSync(manifestPath)) {
+    // null, not join(undefined, …) — there is no releaseDir on the image path.
+    const manifestPath = isImageDeploy ? null : join(releaseDir, 'deployhub.json');
+    if (isImageDeploy) {
+      // A prebuilt image ships no deployhub.json and no package.json, so the
+      // manifest is not "missing" — it does not apply. Warning about its
+      // absence, as the tree path does, would report a problem that isn't one.
+      // The tag resolved above is the version.
+      manifest = { version: imageVersion };
+    } else if (existsSync(manifestPath)) {
       manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
     } else {
       appendLog('WARNING: No deployhub.json found. Using defaults.');
@@ -975,8 +1138,8 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
     //   3. package.json:name (fills `manifest.name` if deployhub.json is absent)
     // This eliminates the drift class where deployhub.json:version goes stale
     // because every Node release bumps package.json but forgets the manifest.
-    const pkgPath = join(releaseDir, 'package.json');
-    if (existsSync(pkgPath)) {
+    const pkgPath = isImageDeploy ? null : join(releaseDir, 'package.json');
+    if (pkgPath && existsSync(pkgPath)) {
       try {
         const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
         if (pkg.version) manifest.version = pkg.version;
@@ -985,7 +1148,7 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
         appendLog(`WARNING: package.json parse failed (${e.message}); falling back to deployhub.json:version`);
       }
     }
-    if (existsSync(manifestPath)) {
+    if (manifestPath && existsSync(manifestPath)) {
       appendLog(`Found deployhub.json: ${manifest.name || '(no name)'} v${manifest.version || '(no version)'}`);
     }
 
@@ -1036,6 +1199,17 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
 
     if (!await dockerAvailable()) throw new Error('Docker daemon is not available on this host');
 
+    let image;
+
+    if (isImageDeploy) {
+      // Nothing to build and nothing to validate a build against: the artifact
+      // was pulled above. `image` is the DIGEST ref, never the tag the operator
+      // typed, so what starts below is exactly what deployments.image_ref says
+      // started.
+      image = pinnedImageRef;
+      appendLog(`Image ready (pulled, digest-pinned): ${image}`);
+    } else {
+
     // Pre-build: if the app committed a `dist/`, verify it's not stale.
     // Catches the "white page on live" failure mode where index.html
     // references hashed asset names that don't exist on disk anymore.
@@ -1056,7 +1230,6 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
     // static/…) if the binary is on the host; otherwise fail with a clear ask.
     const hasDockerfile = existsSync(join(releaseDir, 'Dockerfile'));
     const isNodeApp = existsSync(join(releaseDir, 'package.json'));
-    let image;
 
     if (!hasDockerfile && !isNodeApp) {
       const { nixpacksAvailable, nixpacksBuild } = await import('./nixpacks.js');
@@ -1099,6 +1272,7 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
         onLog: (line) => { if (deployLog.length < 500) appendLog(`  ${line}`); },
       });
       appendLog(`Image ready: ${image}`);
+    }
     }
 
     // v2.6.16: pre-flight entry-exists check. Validate that the entry
@@ -1196,6 +1370,11 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
       env,
       image,
       hostPort: bePort,
+      // The port the image listens on. AppCrane's own build always produces
+      // 3000; a third-party image has no reason to agree (odoo is 8069, nginx
+      // is 80), so an image app declares its own. Passed straight from the
+      // column, NULL included — startApp normalises NULL to the 3000 default.
+      containerPort: app.container_port,
       envVars: runtimeEnvVars,
       volumes: [{ host: resolve(join(sharedDir, 'data')), container: '/data' }],
       memoryMb: limits.max_ram_mb,
@@ -1241,8 +1420,17 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
     const { ingress_type } = getIngressForApp(db, app.id);
     const isTcpIngress = ingress_type === 'tcp';
 
-    const healthPath = manifest.be?.health || '/api/health';
-    const healthSource = manifest.be?.health ? `manifest.be.health="${manifest.be.health}"` : `default /api/health (manifest.be.health unset)`;
+    // apps.health_path sits between the manifest and the default because an
+    // image app has no manifest to declare one in, and /api/health is an
+    // AppCrane-build convention a stock image has no reason to serve — probing
+    // it would 404 and mark a working container unhealthy. The column is NULL
+    // for every tree-based app, so their behaviour is unchanged.
+    const healthPath = manifest.be?.health || app.health_path || '/api/health';
+    const healthSource = manifest.be?.health
+      ? `manifest.be.health="${manifest.be.health}"`
+      : app.health_path
+        ? `apps.health_path="${app.health_path}"`
+        : `default /api/health (manifest.be.health unset)`;
     const healthUrl = `http://localhost:${bePort}${healthPath}`;
     // Both protocols probe the LOOPBACK port every container publishes, never
     // the public one — same rule as healthChecker.js: the gate must pass before
@@ -1341,7 +1529,7 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
       await dockerStop(app.slug, env).catch(() => {});
       if (prevImage) {
         appendLog(`Reverting to previous image: ${prevImage}`);
-        await dockerStart({ slug: app.slug, env, image: prevImage, hostPort: bePort, envVars: runtimeEnvVars, volumes: [{ host: resolve(join(sharedDir, 'data')), container: '/data' }], memoryMb: limits.max_ram_mb, cpus: limits.max_cpu_percent / 100 }).catch(() => {});
+        await dockerStart({ slug: app.slug, env, image: prevImage, hostPort: bePort, containerPort: app.container_port, envVars: runtimeEnvVars, volumes: [{ host: resolve(join(sharedDir, 'data')), container: '/data' }], memoryMb: limits.max_ram_mb, cpus: limits.max_cpu_percent / 100 }).catch(() => {});
       }
       const restoreNote = prevImage
         ? 'Previous version restored.'
@@ -1371,26 +1559,39 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
     // flip so a partial deploy can't quietly leave the app in the
     // "deployed but unfindable" state described in the
     // 2026-05-02 current-symlink-missing triage.
-    const currentLink = resolve(join(appDir, 'current'));
-    try { unlinkSync(currentLink); } catch (e) {} // ignore if doesn't exist
-    symlinkSync(resolve(releaseDir), currentLink);
-    if (!existsSync(currentLink)) {
-      throw new Error(`Deploy verification failed: current symlink at ${currentLink} did not resolve after creation`);
+    //
+    // Skipped entirely for an image deploy. There is no release directory to
+    // point `current` at, and the verification below would be the loudest
+    // failure of the lot: it demands the target hold a package.json or a
+    // deployhub.json, which is a statement about a source tree. A healthy
+    // odoo:19 container would have failed the deploy on that line.
+    if (!isImageDeploy) {
+      const currentLink = resolve(join(appDir, 'current'));
+      try { unlinkSync(currentLink); } catch (e) {} // ignore if doesn't exist
+      symlinkSync(resolve(releaseDir), currentLink);
+      if (!existsSync(currentLink)) {
+        throw new Error(`Deploy verification failed: current symlink at ${currentLink} did not resolve after creation`);
+      }
+      if (!existsSync(join(currentLink, 'package.json')) && !existsSync(join(currentLink, 'deployhub.json'))) {
+        throw new Error(`Deploy verification failed: current symlink target ${releaseDir} has no package.json or deployhub.json`);
+      }
+      appendLog(`Updated current symlink → ${releaseDir.split('/').pop()}`);
     }
-    if (!existsSync(join(currentLink, 'package.json')) && !existsSync(join(currentLink, 'deployhub.json'))) {
-      throw new Error(`Deploy verification failed: current symlink target ${releaseDir} has no package.json or deployhub.json`);
-    }
-    appendLog(`Updated current symlink → ${releaseDir.split('/').pop()}`);
 
     // 8. Update deployment record
     deployFinished = true;
     appendLog(`Deploy complete! Version: ${manifest.version || 'unknown'}`);
+    // release_path stays NULL for an image deploy — nothing was written to
+    // disk, and a path recorded here would be a directory that does not exist.
+    // rollbackApp reads this column, which is why it needed an image branch of
+    // its own rather than the release_path check it hard-fails on.
     db.prepare(`
       UPDATE deployments SET status = 'live', version = ?, commit_hash = ?, commit_message = ?, release_path = ?, finished_at = datetime('now'), log = ?
       WHERE id = ?
-    `).run(manifest.version || 'unknown', commitHash, commitMessage, releaseDir, deployLog.join('\n'), deployId);
-    // Refresh AI codebase context in background after production deploy
-    if (env === 'production') {
+    `).run(manifest.version || 'unknown', commitHash, commitMessage, isImageDeploy ? null : releaseDir, deployLog.join('\n'), deployId);
+    // Refresh AI codebase context in background after production deploy —
+    // there is no codebase to index for an image app.
+    if (env === 'production' && !isImageDeploy) {
       ensureCodebaseContext(app.slug, releaseDir).catch(err => log.warn(`Context refresh failed for ${app.slug}: ${err.message}`));
     }
 

@@ -145,6 +145,7 @@ import log from '../utils/logger.js';
 import { existsSync, mkdirSync, renameSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { reconcileOrphanedApps } from '../services/reconcile.js';
+import { parseImageRef } from '../services/imageSource.js';
 
 const router = Router();
 
@@ -169,6 +170,98 @@ function validateGithubUrl(url) {
       400, 'VALIDATION',
     );
   }
+}
+
+// The three fields a source_type='image' app has and no other kind does.
+//
+// image_ref is to an image app what github_url + branch + a build are to a git
+// app: the whole of what will run. It is validated here, at the write boundary,
+// so the value sitting in apps.image_ref is safe no matter which surface reads
+// it later — not only the argv-based callers in services/imageSource.js.
+//
+// The grammar is NOT reimplemented. parseImageRef transcribes Docker's own
+// reference rules, including the part every hand-rolled split gets wrong (the
+// ':' in 'localhost:5000/odoo' is a port, the ':' in 'odoo:19' is a tag). A
+// second regex in this file would be the one that drifts.
+function validateImageRef(ref) {
+  let parsed;
+  try {
+    parsed = parseImageRef(ref);
+  } catch (e) {
+    throw new AppError(`image_ref is not a valid image reference: ${e.message}`, 400, 'VALIDATION');
+  }
+
+  // v1 refuses a reference where the operator named no version at all — a bare
+  // name ('odoo', which Docker resolves as ':latest') or an explicit ':latest'.
+  //
+  // The reason is what AppCrane records. A deploy resolves the reference to a
+  // digest and stores it on the deployment as the release's identity; against a
+  // tag the publisher republishes at will, that digest stops describing what
+  // 'odoo:latest' means about ten minutes later, and a rollback to that
+  // deployment restores something else under the recorded identity.
+  //
+  // An explicit tag is not immutable either — this is not pretending otherwise.
+  // It is the line where the operator has stated WHICH release they meant, so a
+  // history of digests against 'odoo:19' reads as patch releases of one version
+  // rather than as an unexplained sequence. A digest is the real pin, and is
+  // accepted with or without a tag beside it.
+  if (!parsed.digest && (parsed.tag === null || parsed.tag === 'latest')) {
+    const why = parsed.tag === null
+      ? 'it has no tag, so Docker resolves it as :latest'
+      : ':latest points at a different image whenever the publisher pushes';
+    throw new AppError(
+      `image_ref "${ref}" is not pinned — ${why}. Give an explicit tag (odoo:19) or a digest ` +
+      '(odoo@sha256:<64 hex>); AppCrane records the resolved digest as the deployment\'s identity, ' +
+      'and against a moving tag that record is wrong as soon as upstream moves.',
+      400, 'VALIDATION',
+    );
+  }
+  return parsed;
+}
+
+// NULL means the 3000 default AppCrane's own builds listen on. A third-party
+// image has no reason to agree (odoo is 8069, nginx is 80), and a wrong number
+// here is an app that starts and answers nothing.
+//
+// typeof-guarded before Number(): Number(true) is 1, which is a valid port, so
+// a `container_port: true` would otherwise be stored as port 1 rather than
+// refused.
+function validateContainerPort(port) {
+  if (typeof port !== 'number' && typeof port !== 'string') {
+    throw new AppError('container_port must be an integer between 1 and 65535', 400, 'VALIDATION');
+  }
+  const n = Number(port);
+  if (!Number.isInteger(n) || n < 1 || n > 65535) {
+    throw new AppError('container_port must be an integer between 1 and 65535', 400, 'VALIDATION');
+  }
+  return n;
+}
+
+// NULL means /api/health, again the AppCrane-built default. A stock image does
+// not serve that path, and a health check against a 404 reports a working app
+// as unhealthy.
+//
+// The value is appended to a URL by the health checker, so whitespace and
+// control characters are refused at the boundary rather than left to whichever
+// URL builder sees it first.
+function validateHealthPath(p) {
+  if (typeof p !== 'string') {
+    throw new AppError("health_path must be a string starting with '/'", 400, 'VALIDATION');
+  }
+  const v = p.trim();
+  if (!v.startsWith('/')) {
+    throw new AppError(`health_path must start with '/' — got "${p}"`, 400, 'VALIDATION');
+  }
+  if (v.length > 512) {
+    throw new AppError('health_path is too long (max 512 chars)', 400, 'VALIDATION');
+  }
+  for (const ch of v) {
+    const code = ch.codePointAt(0);
+    if (code <= 0x20 || code === 0x7f) {
+      throw new AppError('health_path contains whitespace or control characters', 400, 'VALIDATION');
+    }
+  }
+  return v;
 }
 
 /**
@@ -350,7 +443,7 @@ router.post('/', requireAuth, auditMiddleware('app-create'), async (req, res) =>
     throw new AppError('You do not have permission to create apps.', 403, 'FORBIDDEN');
   }
 
-  const { name, slug, domain, description, category, source_type, github_url, branch, github_token, max_ram_mb, max_cpu_percent, visibility, public_access } = req.body;
+  const { name, slug, domain, description, category, source_type, github_url, branch, github_token, max_ram_mb, max_cpu_percent, visibility, public_access, image_ref, container_port, health_path } = req.body;
 
   if (!name || !slug) throw new AppError('Name and slug are required', 400, 'VALIDATION');
   if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) throw new AppError('Slug must be lowercase alphanumeric with dashes', 400, 'VALIDATION');
@@ -373,13 +466,51 @@ router.post('/', requireAuth, auditMiddleware('app-create'), async (req, res) =>
   // Kept distinct from 'managed' on purpose. An upload-only app has no repo, and
   // conflating the two leaves every surface unable to tell "deliberately
   // upload-only" from "repo not configured yet" — the second reads as broken.
-  const VALID_SOURCE_TYPES = new Set(['github', 'managed', 'upload']);
+  //
+  // v2.59.0: 'image' deploys a prebuilt image instead of building one. The
+  // other three source types all end in the same place — AppCrane holds a tree
+  // of files and builds an image out of it — and this one skips the build
+  // entirely, so the app carries three facts none of the others has
+  // (image_ref / container_port / health_path, migration 083).
+  const VALID_SOURCE_TYPES = new Set(['github', 'managed', 'upload', 'image']);
   if (source_type && !VALID_SOURCE_TYPES.has(source_type)) {
     throw new AppError(
-      `source_type must be 'github' or 'managed' — '${source_type}' is no longer supported`,
+      `source_type must be one of ${[...VALID_SOURCE_TYPES].map(t => `'${t}'`).join(', ')} — ` +
+      `'${source_type}' is not supported`,
       400, 'VALIDATION',
     );
   }
+
+  // An image app with no image_ref names nothing to run. Refused here rather
+  // than at deploy time: the app would be created, look ordinary on every
+  // surface, and fail on the first deploy with an error about a column instead
+  // of about the field the operator did not fill in.
+  if (source_type === 'image' && !image_ref) {
+    throw new AppError(
+      "source_type 'image' requires image_ref — the image to run, e.g. 'odoo:19' or " +
+      "'ghcr.io/owner/app@sha256:<64 hex>'",
+      400, 'VALIDATION',
+    );
+  }
+  // Validated whenever supplied, not only when source_type is 'image'. The
+  // check is on the VALUE, and a ref that is unsafe or unpinned is just as
+  // unsafe sitting on a row whose source_type changes to 'image' later.
+  //
+  // Deliberately NOT carried on github_url. That column is validated by
+  // validateGithubUrl (which rejects every image reference there is) and
+  // deployer.js branches on it being truthy, so an image ref smuggled through
+  // it would select the git path with a nonsense URL.
+  let imageRefValue = null;
+  if (image_ref !== undefined && image_ref !== null && image_ref !== '') {
+    validateImageRef(image_ref);
+    imageRefValue = String(image_ref).trim();
+  }
+  const containerPortValue = container_port === undefined || container_port === null
+    ? null
+    : validateContainerPort(container_port);
+  const healthPathValue = health_path === undefined || health_path === null || health_path === ''
+    ? null
+    : validateHealthPath(health_path);
 
   const db = getDb();
 
@@ -420,9 +551,9 @@ router.post('/', requireAuth, auditMiddleware('app-create'), async (req, res) =>
   const appDomain = domain || null;
 
   const result = db.prepare(`
-    INSERT INTO apps (name, slug, slot, domain, description, category, source_type, github_url, branch, github_token_encrypted, resource_limits, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(name, slug, slot, appDomain, description || null, category || null, source_type || 'github', github_url || null, branch || 'main', tokenEncrypted, resourceLimits, req.user.id);
+    INSERT INTO apps (name, slug, slot, domain, description, category, source_type, github_url, branch, github_token_encrypted, resource_limits, created_by, image_ref, container_port, health_path)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(name, slug, slot, appDomain, description || null, category || null, source_type || 'github', github_url || null, branch || 'main', tokenEncrypted, resourceLimits, req.user.id, imageRefValue, containerPortValue, healthPathValue);
 
   const appId = result.lastInsertRowid;
 
@@ -635,32 +766,67 @@ router.get('/:slug/storage', requireAppAccess, async (req, res) => {
 router.put('/:slug', requireAppAccess, auditMiddleware('app-update'), async (req, res) => {
   const db = getDb();
   const app = req.app;
-  const { name, domain, description, category, source_type, github_url, branch, github_token, max_ram_mb, max_cpu_percent, public_access, visibility, image_retention, frame_ancestors, auth_mode, auth_bypass_paths, email_from_name, ingress_type, public_port, sandbox_public_port, data_plane_port } = req.body;
+  const { name, domain, description, category, source_type, github_url, branch, github_token, max_ram_mb, max_cpu_percent, public_access, visibility, image_retention, frame_ancestors, auth_mode, auth_bypass_paths, email_from_name, ingress_type, public_port, sandbox_public_port, data_plane_port, image_ref, container_port, health_path } = req.body;
 
   // Configurable RBAC: changes to repo-related fields gated by code.modify_repo_settings.
   // Other fields (name, description, category, visibility, etc.) stay open to any
   // app-assigned user via requireAppAccess.
+  //
+  // image_ref joins the list on the same footing as github_url: for an image
+  // app it IS the code selection, so a role that may not repoint the repo must
+  // not be able to repoint the image either. container_port and health_path are
+  // deliberately left out — they describe where the image answers, not what it
+  // is, and are no more sensitive than the other open fields.
   const repoFieldChanged =
     github_url !== undefined ||
     branch !== undefined ||
     github_token !== undefined ||
-    source_type !== undefined;
+    source_type !== undefined ||
+    image_ref !== undefined;
   if (repoFieldChanged && !userHasAppPermission(req.user, app, 'code.modify_repo_settings')) {
     throw new AppError('Modifying repo settings is not permitted by your role on this app', 403, 'FORBIDDEN');
   }
 
-  // v2.3.1: same allowlist as POST. Editing an app's source_type to
-  // 'upload' is no longer permitted; the only legal targets are 'github'
-  // and 'managed'. Existing 'managed_legacy' apps can stay or be promoted
-  // to 'github' / 'managed' once their files are pushed to a real repo.
+  // Same allowlist as POST. 'managed_legacy' stays absent from it: it is the
+  // deprecation marker for pre-052 upload apps, so existing rows keep it but no
+  // request may set it.
+  // v2.59.0: 'image' is settable here as well as on POST. The two allowlists are
+  // separate declarations, and a value added to one of them is accepted by half
+  // the API — an app created as an image app that could never be edited, or the
+  // reverse.
   if (source_type !== undefined) {
-    const VALID_SOURCE_TYPES = new Set(['github', 'managed', 'upload']);
+    const VALID_SOURCE_TYPES = new Set(['github', 'managed', 'upload', 'image']);
     if (!VALID_SOURCE_TYPES.has(source_type)) {
       throw new AppError(
-        `source_type must be 'github' or 'managed' — '${source_type}' is no longer supported`,
+        `source_type must be one of ${[...VALID_SOURCE_TYPES].map(t => `'${t}'`).join(', ')} — ` +
+        `'${source_type}' is not supported`,
         400, 'VALIDATION',
       );
     }
+  }
+
+  // The image fields. Validated on the VALUE whenever supplied — see the
+  // matching block in POST — and image_ref is additionally REQUIRED by the time
+  // the row is an image app.
+  //
+  // The requirement is checked against the effective value, not against
+  // req.body: a PUT that only flips source_type to 'image' on a row that
+  // already carries an image_ref is complete, and a PUT that supplies both at
+  // once is the ordinary case. Only the combination that would leave the row
+  // naming nothing to run is refused.
+  let imageRefValue = null;
+  if (image_ref !== undefined && image_ref !== null && image_ref !== '') {
+    validateImageRef(image_ref);
+    imageRefValue = String(image_ref).trim();
+  }
+  const nextSourceType = source_type === undefined ? app.source_type : source_type;
+  const nextImageRef = image_ref === undefined ? (app.image_ref || null) : imageRefValue;
+  if (nextSourceType === 'image' && !nextImageRef) {
+    throw new AppError(
+      "source_type 'image' requires image_ref — the image to run, e.g. 'odoo:19' or " +
+      "'ghcr.io/owner/app@sha256:<64 hex>'",
+      400, 'VALIDATION',
+    );
   }
 
   // v2.7.6: category changes are owner/admin-only, and only global admins may
@@ -724,6 +890,15 @@ router.put('/:slug', requireAppAccess, auditMiddleware('app-update'), async (req
   if (description !== undefined) updates.description = description;
   if (category !== undefined) updates.category = category ? String(category).trim() : null;
   if (source_type !== undefined) updates.source_type = source_type;
+  if (image_ref !== undefined) updates.image_ref = imageRefValue;
+  if (container_port !== undefined) {
+    updates.container_port = container_port === null ? null : validateContainerPort(container_port);
+  }
+  if (health_path !== undefined) {
+    updates.health_path = health_path === null || health_path === ''
+      ? null
+      : validateHealthPath(health_path);
+  }
   if (github_url !== undefined) {
     if (github_url) validateGithubUrl(github_url);
     updates.github_url = github_url;
@@ -1094,7 +1269,7 @@ router.put('/:slug', requireAppAccess, auditMiddleware('app-update'), async (req
     return res.json({ app: { ...app, auth_mode: effectiveAuthMode(app.auth_mode), ...ingressFields(app) }, message: 'No changes' });
   }
 
-  const ALLOWED_APP_COLS = new Set(['name','domain','description','category','source_type','github_url','branch','public_access','visibility','github_token_encrypted','resource_limits','runtime','image_retention','frame_ancestors','auth_mode','auth_bypass_paths','email_from_name','ingress_type','data_plane_port']);
+  const ALLOWED_APP_COLS = new Set(['name','domain','description','category','source_type','github_url','branch','public_access','visibility','github_token_encrypted','resource_limits','runtime','image_retention','frame_ancestors','auth_mode','auth_bypass_paths','email_from_name','ingress_type','data_plane_port','image_ref','container_port','health_path']);
   const invalidKey = Object.keys(updates).find(k => !ALLOWED_APP_COLS.has(k));
   if (invalidKey) throw new AppError(`Invalid field: ${invalidKey}`, 400, 'VALIDATION');
 

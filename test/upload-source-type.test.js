@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -53,19 +53,36 @@ test("'managed_legacy' survives — it marks pre-052 rows the deployer treats di
 });
 
 test('the rebuild kept every column the migration is supposed to preserve', () => {
-  // Read the expected set from 081 itself rather than hardcoding it here, so
-  // this fails when the migration's INSERT column list and its CREATE TABLE
-  // disagree — the specific way a rebuild loses data silently.
-  const sql = readFileSync(new URL('../server/migrations/081-source-type-upload.sql', import.meta.url), 'utf8');
+  // Resolve the newest rebuild instead of naming one. Every rebuild restates
+  // the whole column list, so the highest-numbered migration containing
+  // `CREATE TABLE apps_new` is the one that defines the live schema. Naming a
+  // file here breaks the moment the next rebuild lands: 081 was named, 083 added
+  // three columns, and the assertion below then reported a healthy schema as
+  // broken — a false alarm on the one test that is supposed to catch real data
+  // loss is worse than no test, because the next person edits the number out.
+  const dir = new URL('../server/migrations/', import.meta.url);
+  const rebuilds = readdirSync(dir)
+    .filter((f) => f.endsWith('.sql') && readFileSync(new URL(f, dir), 'utf8').includes('CREATE TABLE apps_new'))
+    .sort();
+  const newest = rebuilds[rebuilds.length - 1];
+  assert.ok(newest, 'no migration rebuilds apps — the parse below would then assert nothing at all');
+
+  // Read the expected set from that migration itself rather than hardcoding it
+  // here, so this fails when the migration's INSERT column list and its CREATE
+  // TABLE disagree — the specific way a rebuild loses data silently.
+  const sql = readFileSync(new URL(newest, dir), 'utf8');
   const created = [...sql.matchAll(/^\s{2}([a-z_]+)\s+(?:INTEGER|TEXT)/gm)].map((m) => m[1]);
   const live = columns().map((c) => c.name);
 
-  assert.ok(created.length >= 32, `parsed only ${created.length} columns out of the migration`);
+  // A floor, not the count: rebuilds only ever add columns, so anything under
+  // the 32 that 081 restated means the regex stopped matching, not that the
+  // schema shrank.
+  assert.ok(created.length >= 32, `parsed only ${created.length} columns out of ${newest}`);
   for (const col of created) {
-    assert.ok(live.includes(col), `column '${col}' is created by 081 but missing from the live table`);
+    assert.ok(live.includes(col), `column '${col}' is created by ${newest} but missing from the live table`);
   }
   assert.equal(live.length, created.length,
-    'the live table and the migration disagree on the column count — one of them is out of date, ' +
+    `the live table and ${newest} disagree on the column count — one of them is out of date, ` +
     'and if it is the migration then a future rebuild drops whatever it does not know about');
 });
 

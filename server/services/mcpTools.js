@@ -366,6 +366,111 @@ function projectScanRow(row, where) {
   };
 }
 
+// Shared description text for the three source_type='image' fields, so the
+// create tool and the update tool cannot drift into telling an agent two
+// different things about the same column.
+const IMAGE_REF_DESC =
+  'Prebuilt container image to run instead of building from source, e.g. "odoo:19" or ' +
+  '"ghcr.io/owner/app@sha256:<64 hex>". Sets source_type=\'image\'. The reference MUST name a ' +
+  'version: a bare name ("odoo") and an explicit ":latest" are both REFUSED, because AppCrane ' +
+  'records the resolved digest as the deployment\'s identity and against an unpinned tag that ' +
+  'record is wrong as soon as upstream moves. A digest is the real pin; a version tag ("odoo:19") ' +
+  'is accepted and is how you pick up a patch release on redeploy. Credentials never go in the ' +
+  'reference — a private registry authenticates through the Docker daemon\'s own credential ' +
+  'store, set up out of band.';
+const CONTAINER_PORT_DESC =
+  'Port the image listens on inside the container. Omit only if the image really listens on 3000 ' +
+  '(what an AppCrane-built image does); a third-party image usually does not — odoo is 8069, ' +
+  'nginx is 80. Getting this wrong makes the app unreachable, not slow.';
+const HEALTH_PATH_DESC =
+  'HTTP path AppCrane health-checks. Omit only if the image serves /api/health (the AppCrane-built ' +
+  'default). A stock image will not, and a health check against a 404 marks a working app unhealthy.';
+
+/**
+ * Validate the source_type='image' trio and return the values to persist.
+ *
+ * Both write tools go through here rather than each doing its own checks: the
+ * MCP surface has already shipped one enum that drifted from the REST route
+ * (see the source_type enum note on appcrane_update_app), and validation
+ * duplicated per tool drifts the same way.
+ *
+ * `image_ref` is parsed by services/imageSource.js — the one place the
+ * registry/port/tag ambiguity is resolved — and then held to a stricter rule
+ * than the parser's: the parser reports "no tag" as a fact, and this refuses
+ * it. An unpinned reference is not a typo the operator can see in the UI later;
+ * it is a deploy whose contents depend on when it ran.
+ *
+ * Only keys actually present in `args` appear in the result, so an update that
+ * touches one field leaves the other two alone.
+ */
+async function validateImageFields(args) {
+  const out = {};
+  const { parseImageRef } = await import('./imageSource.js');
+
+  if (args.image_ref !== undefined) {
+    if (!args.image_ref) {
+      out.image_ref = null;
+    } else {
+      const parsed = parseImageRef(args.image_ref);
+      // Same rule, same wording as validateImageRef in server/routes/apps.js:
+      // no digest and either no tag or the literal ':latest'. The two gates are
+      // separate code because a route helper is not importable from a service,
+      // and a rule stated twice is a rule that drifts — so they are stated
+      // identically and test/image-source-mcp.test.js pins this half of it.
+      if (!parsed.digest && (parsed.tag === null || parsed.tag === 'latest')) {
+        const why = parsed.tag === null
+          ? 'it has no tag, so Docker resolves it as :latest'
+          : ':latest points at a different image whenever the publisher pushes';
+        throw new Error(
+          `image_ref "${args.image_ref}" is not pinned — ${why}. Give an explicit tag (odoo:19) ` +
+          'or a digest (odoo@sha256:<64 hex>).',
+        );
+      }
+      out.image_ref = String(args.image_ref).trim();
+    }
+  }
+
+  if (args.container_port !== undefined) {
+    if (args.container_port === null || args.container_port === '') {
+      out.container_port = null;
+    } else {
+      // typeof-guarded before Number(): Number(true) is 1, a valid port, so a
+      // `container_port: true` would otherwise be stored as port 1.
+      if (typeof args.container_port !== 'number' && typeof args.container_port !== 'string') {
+        throw new Error('container_port must be an integer between 1 and 65535');
+      }
+      const n = Number(args.container_port);
+      if (!Number.isInteger(n) || n < 1 || n > 65535) {
+        throw new Error('container_port must be an integer between 1 and 65535');
+      }
+      out.container_port = n;
+    }
+  }
+
+  if (args.health_path !== undefined) {
+    if (!args.health_path) {
+      out.health_path = null;
+    } else {
+      // Same three checks, same 512 ceiling, as validateHealthPath in
+      // server/routes/apps.js. The value is appended to a URL by the health
+      // checker: a path missing its leading '/' concatenates into the host
+      // name, and whitespace or a control character produces an unparseable URL.
+      const p = String(args.health_path).trim();
+      if (!p.startsWith('/')) throw new Error(`health_path must start with '/' — got "${args.health_path}"`);
+      if (p.length > 512) throw new Error('health_path is too long (max 512 chars)');
+      for (const ch of p) {
+        const code = ch.codePointAt(0);
+        if (code <= 0x20 || code === 0x7f) {
+          throw new Error('health_path contains whitespace or control characters');
+        }
+      }
+      out.health_path = p;
+    }
+  }
+
+  return out;
+}
+
 const TOOLS = [
   {
     name: 'appcrane_list_apps',
@@ -1692,25 +1797,38 @@ const TOOLS = [
   {
     name: 'appcrane_create_app',
     description:
-      'Register a new app in AppCrane from a GitHub repository. Use this only after the user has explicitly ' +
-      'confirmed they want to onboard a new app and provided a real github URL. ' +
+      'Register a new app in AppCrane, either from a GitHub repository or from a prebuilt container image. ' +
+      'Use this only after the user has explicitly confirmed they want to onboard a new app and told you ' +
+      'which source to use — a real github URL, or an image reference for source_type=\'image\'. ' +
       'Allocates ports, creates the data directories, configures Caddy routing, and starts health checks. ' +
       'After this returns, call appcrane_set_secret to set any required secrets, then appcrane_deploy to ship the first build. ' +
+      'For an image app there is nothing to build: the deploy pulls image_ref and starts it, so also pass ' +
+      'container_port and health_path unless the image happens to match AppCrane\'s own 3000 + /api/health defaults. ' +
       'Requires the create-apps permission (global admins, or any role a platform admin granted at Settings → Roles).',
     inputSchema: {
       type: 'object',
       properties: {
         name:        { type: 'string', description: 'Display name (shown in dashboard)' },
         slug:        { type: 'string', description: 'URL-safe identifier — lowercase letters, digits, dashes; must start with a letter or digit. Lives at /<slug>/.' },
-        github_url:  { type: 'string', description: 'GitHub repo URL, e.g. https://github.com/me/mysite' },
+        // No source_type existed here before v2.59.0 — this tool hardcoded
+        // 'github' and required github_url, so the image source was
+        // unreachable through MCP no matter what the other two enums allowed.
+        // 'managed' and 'upload' are deliberately NOT offered: a managed app is
+        // created by appcrane_create_managed_app (it also creates the repo),
+        // and an upload app is created through the artifact flow.
+        source_type: { type: 'string', enum: ['github', 'image'], description: "'github' (default) clones and builds a repo; 'image' runs a prebuilt image and never builds. Implied when image_ref is passed." },
+        github_url:  { type: 'string', description: 'GitHub repo URL, e.g. https://github.com/me/mysite. Required unless source_type is \'image\'.' },
         branch:      { type: 'string', description: 'Branch to track. Default: main', default: 'main' },
+        image_ref:      { type: 'string', description: IMAGE_REF_DESC },
+        container_port: { type: 'integer', minimum: 1, maximum: 65535, description: CONTAINER_PORT_DESC },
+        health_path:    { type: 'string', description: HEALTH_PATH_DESC },
         description: { type: 'string' },
         domain:      { type: 'string', description: 'Optional custom domain. If omitted, the app lives under CRANE_DOMAIN/<slug>/.' },
         github_token:    { type: 'string', description: 'GitHub PAT for private repos. Stored encrypted; only used to clone.' },
         max_ram_mb:      { type: 'number', description: 'Per-container memory cap. Default: 512.' },
         max_cpu_percent: { type: 'number', description: 'Per-container CPU cap. Default: 50.' },
       },
-      required: ['name', 'slug', 'github_url'],
+      required: ['name', 'slug'],
       additionalProperties: false,
     },
     requiredRole: 'create_app',
@@ -1722,8 +1840,19 @@ const TOOLS = [
       if (args.branch && !/^[A-Za-z0-9._/\-]{1,200}$/.test(args.branch)) {
         throw new Error('branch must be alphanumeric with . _ / - (max 200 chars)');
       }
-      if (!/^https?:\/\/(www\.)?github\.com\/[A-Za-z0-9_.\-]+\/[A-Za-z0-9_.\-]+(\.git)?\/?$/.test(github_url)) {
-        throw new Error('github_url must be a valid github.com URL');
+      // image_ref alone is enough to mean 'image'. An agent that passes the
+      // reference but forgets the discriminator would otherwise create a github
+      // app carrying an image reference nothing reads.
+      const sourceType = args.source_type || (args.image_ref ? 'image' : 'github');
+      const image = await validateImageFields(args);
+      if (sourceType === 'image') {
+        if (!image.image_ref) throw new Error("source_type='image' requires image_ref");
+        if (github_url) throw new Error("source_type='image' takes no github_url — an image app has no repo to clone");
+      } else {
+        if (!github_url) throw new Error('github_url is required (or pass image_ref for an image app)');
+        if (!/^https?:\/\/(www\.)?github\.com\/[A-Za-z0-9_.\-]+\/[A-Za-z0-9_.\-]+(\.git)?\/?$/.test(github_url)) {
+          throw new Error('github_url must be a valid github.com URL');
+        }
       }
 
       const db = getDb();
@@ -1746,9 +1875,11 @@ const TOOLS = [
       const branch = args.branch || 'main';
 
       const result = db.prepare(`
-        INSERT INTO apps (name, slug, slot, domain, description, category, source_type, github_url, branch, github_token_encrypted, resource_limits, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, 'github', ?, ?, ?, ?, ?)
-      `).run(name, slug, slot, args.domain || null, args.description || null, null, github_url, branch, tokenEncrypted, resourceLimits, user.id);
+        INSERT INTO apps (name, slug, slot, domain, description, category, source_type, github_url, branch, github_token_encrypted, resource_limits, created_by, image_ref, container_port, health_path)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(name, slug, slot, args.domain || null, args.description || null, null, sourceType,
+        github_url || null, branch, tokenEncrypted, resourceLimits, user.id,
+        image.image_ref ?? null, image.container_port ?? null, image.health_path ?? null);
       const appId = result.lastInsertRowid;
 
       for (const env of ['production', 'sandbox']) {
@@ -1790,7 +1921,14 @@ const TOOLS = [
         sandbox:    `https://${craneDomain}/${slug}-sandbox`,
       } : null;
       return {
-        app: { slug, name, github_url, branch },
+        app: {
+          slug, name, branch,
+          source_type: sourceType,
+          github_url: github_url || null,
+          image_ref: image.image_ref ?? null,
+          container_port: image.container_port ?? null,
+          health_path: image.health_path ?? null,
+        },
         ports,
         urls,
         next: `Set secrets with appcrane_set_secret, then deploy with appcrane_deploy slug="${slug}" stage="sandbox".`,
@@ -1801,7 +1939,7 @@ const TOOLS = [
   {
     name: 'appcrane_update_app',
     description:
-      'Patch fields on an existing app. Use this to fix a missing github_url after the fact, change branch, rotate the github_token, retag with category/visibility, or adjust resource limits — anything you would otherwise need direct DB access for. Only includes fields you pass; omitted fields are left alone. To clear a string field pass an empty string. Returns the same shape as appcrane_get_app.',
+      'Patch fields on an existing app. Use this to fix a missing github_url after the fact, change branch, rotate the github_token, retag with category/visibility, point an image app at a new image_ref, or adjust resource limits — anything you would otherwise need direct DB access for. Only includes fields you pass; omitted fields are left alone. To clear a string field pass an empty string. Returns the same shape as appcrane_get_app.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1812,11 +1950,18 @@ const TOOLS = [
         domain:         { type: 'string' },
         // 'upload' added in v2.53.0 with the artifact-deploy flow; this enum was
         // missed, so the REST route accepted a source type the MCP tool rejected.
+        // 'image' (v2.59.0) was the same story a second time — the enum here is
+        // a THIRD gate on top of POST and PUT in routes/apps.js, so a source
+        // type added to the column's CHECK is not usable until it is listed in
+        // all three.
         // 'managed_legacy' stays readable but is not offered as a destination —
         // it marks pre-v2.3.1 rows that replay an old release directory.
-        source_type:    { type: 'string', enum: ['github', 'managed', 'upload'] },
+        source_type:    { type: 'string', enum: ['github', 'managed', 'upload', 'image'] },
         github_url:     { type: 'string', description: 'github.com URL of the source repo. Pass empty string to clear.' },
         branch:         { type: 'string' },
+        image_ref:      { type: 'string', description: IMAGE_REF_DESC + ' Pass empty string to clear.' },
+        container_port: { type: 'integer', minimum: 1, maximum: 65535, description: CONTAINER_PORT_DESC },
+        health_path:    { type: 'string', description: HEALTH_PATH_DESC + ' Pass empty string to restore the default.' },
         github_token:   { type: 'string', description: 'PAT for private clones. Stored encrypted (AES-256-GCM). Omit to leave the existing token alone; pass empty string to clear it; pass a value to rotate.' },
         visibility:     { type: 'string', enum: ['public', 'private', 'hidden'] },
         public_access:  { type: 'integer', enum: [0, 1] },
@@ -1863,6 +2008,16 @@ const TOOLS = [
         }
       }
       if (args.source_type !== undefined) updates.source_type = args.source_type;
+      Object.assign(updates, await validateImageFields(args));
+      // An app whose source_type says 'image' with no image_ref has nothing to
+      // deploy, and the failure surfaces at deploy time as a docker error
+      // rather than here as a rejected edit. Checked against the merged view so
+      // either half of the pair can arrive in either call.
+      const nextSourceType = updates.source_type ?? app.source_type;
+      const nextImageRef   = 'image_ref' in updates ? updates.image_ref : app.image_ref;
+      if (nextSourceType === 'image' && !nextImageRef) {
+        throw new Error("source_type='image' requires image_ref — pass it in this same call");
+      }
       if (args.github_url  !== undefined) {
         if (args.github_url && !/^https?:\/\/(www\.)?github\.com\/[A-Za-z0-9_.\-]+\/[A-Za-z0-9_.\-]+(\.git)?\/?$/.test(args.github_url)) {
           throw new Error('github_url must be a valid github.com URL or empty string to clear');
@@ -1947,6 +2102,9 @@ const TOOLS = [
           source_type:    fresh.source_type,
           github_url:     fresh.github_url,
           branch:         fresh.branch,
+          image_ref:      fresh.image_ref,
+          container_port: fresh.container_port,
+          health_path:    fresh.health_path,
           token_set:      !!fresh.github_token_encrypted,
           domain:         fresh.domain,
           category:       fresh.category,
