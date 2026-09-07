@@ -54,6 +54,12 @@ const ALLOWLIST = {
     'Retired in v2.6.0 — returns 410 GONE unconditionally, touches no data',
   'ask.js GET /sessions/:appSlug':
     'Query is scoped `WHERE app_slug = ? AND user_id = ?` — returns only the caller\'s own sessions',
+  'catalog.js GET /:slug/versions':
+    'The :slug is a CATALOGUE slug (a curated public project like `odoo`), not an AppCrane app '
+    + 'slug — there is no per-app permission that could apply, because the catalogue is identical '
+    + 'for every user. The router is behind requireAuth (catalog.js:30), and findEntry() matches '
+    + 'the slug against the shipped manifest by exact equality and 404s before any network call, '
+    + 'so a caller-supplied slug can never reach an outbound URL.',
 };
 
 const APP_PARAM_RE = /:(?:slug|appSlug)\b/;
