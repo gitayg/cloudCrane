@@ -2,7 +2,7 @@
  * Microsoft Graph email transport (v2.8.0).
  *
  * Sends as the configured shared mailbox (email_from_address, e.g.
- * aimi@opswat.com) using OAuth2 client-credentials (application permission
+ * appcrane@example.com) using OAuth2 client-credentials (application permission
  * Mail.Send). Config lives in the settings table — the client secret is
  * stored encrypted and decrypted here at send time; nothing is hardcoded.
  *
@@ -34,7 +34,7 @@ export function getGraphConfig() {
     const enc = setting(db, 'graph_client_secret_encrypted');
     if (enc) { try { secret = decrypt(enc); } catch (e) { log.error(`[graph] client secret decrypt failed: ${e.message}`); } }
   }
-  const mailbox = setting(db, 'email_from_address') || 'aimi@opswat.com';
+  const mailbox = setting(db, 'email_from_address') || 'appcrane@example.com';
   if (!tenant || !clientId || !secret) return null;
   return { tenant, clientId, secret, mailbox };
 }

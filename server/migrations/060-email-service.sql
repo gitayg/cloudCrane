@@ -1,7 +1,7 @@
 -- v2.8.0: app email service. Hosted apps can send email through AppCrane —
 -- server-side only, async via a queue, recipients limited to known SSO users.
 --
--- Why centralized: one verified sender identity (aimi@opswat.com), one place
+-- Why centralized: one verified sender identity (appcrane@example.com), one place
 -- to enforce recipient policy + quota + audit, and apps never hold SMTP
 -- creds. The app authenticates with a per-app service token injected into its
 -- container env (server-side only — a browser never sees it), and POSTs to an
@@ -56,5 +56,5 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_email_queue_idem ON email_queue(app_id, id
 -- Recipients are bounded to registered platform users (see emailQueue), so no
 -- domain allowlist is needed.
 INSERT OR IGNORE INTO settings (key, value) VALUES
-  ('email_from_address', 'aimi@opswat.com'),
+  ('email_from_address', 'appcrane@example.com'),
   ('email_from_name',    'AIMI');

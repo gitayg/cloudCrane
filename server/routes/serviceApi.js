@@ -57,7 +57,7 @@ router.post('/email', (req, res) => {
       to, subject, text, html, replyTo, attachments,
       // Display name: the app decides per-send (fromName in the body), and it
       // defaults to the app's own name — so MarketMind's mail shows
-      // "MarketMind <aimi@opswat.com>" with no setup. Only the display name
+      // "MarketMind <appcrane@example.com>" with no setup. Only the display name
       // varies; the address is always the platform mailbox.
       //
       // v2.44.0: whatever name lands here, the queue renders it as

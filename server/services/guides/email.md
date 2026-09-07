@@ -36,7 +36,7 @@ Body fields:
 | `text` | one of text/html | Plain-text body |
 | `html` | one of text/html | HTML body (used over text if both given) |
 | `replyTo` | no | Reply-To address |
-| `fromName` | no | Sender display name. **Defaults to the app's own name** — MarketMind sends as `MarketMind <aimi@opswat.com>`. Pass this to override per-send (e.g. `"IntelOP"`). The address never changes. |
+| `fromName` | no | Sender display name. **Defaults to the app's own name** — MarketMind sends as `MarketMind <appcrane@example.com>`. Pass this to override per-send (e.g. `"IntelOP"`). The address never changes. |
 | `env` | no | `sandbox` (default) or `production` |
 | `idempotencyKey` | no | Safe retries — the same key never double-sends |
 | `attachments` | no | Array of files: `[{ filename, content, contentType? }]`. `content` is **base64**. Max **10** files, **3 MB** total (decoded). `contentType` defaults to `application/octet-stream`. |
@@ -126,7 +126,7 @@ await notify(userEmail, "Your report is ready", "Open the app to download it.");
   sees. Never call this from frontend code.
 - **Recipients are platform users only.** A non-user address returns `400`.
 - **The address is platform-controlled; the display name is the app's.** From
-  address is fixed (the Settings → Mail mailbox, e.g. `aimi@opswat.com`). The
+  address is fixed (the Settings → Mail mailbox, e.g. `appcrane@example.com`). The
   display name defaults to the app's own name and can be overridden per-send
   via `fromName` — no admin setting. Apps may also set `replyTo`.
 

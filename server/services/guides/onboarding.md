@@ -758,7 +758,7 @@ endpoint takes its own token.
 
 AppCrane can send email on an app's behalf — server-side only, async, and
 bounded to **registered platform users** (an app can never email an arbitrary
-address). Mail goes out as the platform sender (e.g. `AIMI <aimi@opswat.com>`)
+address). Mail goes out as the platform sender (e.g. `AIMI <appcrane@example.com>`)
 configured in Settings → Mail.
 
 **No setup needed — it's available to every app.** On each deploy AppCrane
@@ -786,7 +786,7 @@ await fetch(`${process.env.CRANE_INTERNAL_URL}/api/service/email`, {
     subject: 'Your report is ready',
     text: 'Plain-text body',
     html: '<p>Optional HTML body</p>',
-    replyTo: 'team@opswat.com',     // optional
+    replyTo: 'team@example.com',     // optional
     idempotencyKey: 'report-123',   // optional — safe retries, no double-send
     attachments: [                  // optional — max 10 files, 3 MB total
       { filename: 'report.pdf', content: pdfBase64, contentType: 'application/pdf' },
@@ -809,7 +809,7 @@ Rules and guarantees:
 - **Async + retried.** You get `202` immediately; a worker sends with retries
   and backoff. If delivery fails for good, the platform admin is emailed.
 - **From identity is platform-controlled.** Address is fixed
-  (`aimi@opswat.com`); only the display name is configurable (per-app via
+  (`appcrane@example.com`); only the display name is configurable (per-app via
   `email_from_name`, else the Settings default). Apps cannot spoof the sender.
 - **Attachments** (optional) are base64 files — `[{ filename, content,
   contentType? }]`, max 10 and 3 MB total decoded. Invalid/oversized → `400`,
@@ -1420,7 +1420,7 @@ exactly as for any other app.
 
 **Same-org embedding works out of the box.** By default AppCrane lets any host
 under the platform's own registrable domain (the eTLD+1 of the platform domain,
-e.g. `app.opswat.com` → any `*.opswat.com`) embed apps — including the in-iframe
+e.g. `app.example.com` → any `*.example.com`) embed apps — including the in-iframe
 SSO login step — with no per-app config. A platform admin can turn this off or
 change the domain in Settings → Security → "App embedding". So to embed an app
 from another host on the same domain, you usually need to do nothing.
@@ -1442,8 +1442,8 @@ keeps `X-Frame-Options: SAMEORIGIN`.
 
 Cookie caveat for cross-**site** embedders: AppCrane's session cookie is
 `SameSite=Lax`, so it's sent when the embedder shares the platform's registrable
-domain and scheme (e.g. `https://portal.opswat.com` embedding
-`https://app.opswat.com` — same `opswat.com`, both https → the SSO session flows
+domain and scheme (e.g. `https://portal.example.com` embedding
+`https://app.example.com` — same `example.com`, both https → the SSO session flows
 and login completes in-frame). A truly cross-site embedder (different domain)
 won't receive the `Lax` cookie, so the framed login can't complete there — use a
 same-site https embedder, or make the app `auth_mode: 'headless'`/`visibility:

@@ -4,7 +4,7 @@ import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
-// Open redirect (CWE-601), proven by a credentialed WAS scan of app.opswat.com:
+// Open redirect (CWE-601), proven by a credentialed WAS scan of app.example.com:
 // GET /login?redirect=//3dc5a9db-...com  ->  browser landed on that host.
 //
 // Three call sites guarded with `redirect.startsWith('/')`, which is not a

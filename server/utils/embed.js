@@ -1,7 +1,7 @@
 // Platform-default iframe embedding (v2.25.0).
 //
 // By default AppCrane lets any host under the platform's OWN registrable domain
-// (the eTLD+1 of CRANE_DOMAIN, e.g. app.opswat.com → opswat.com) embed apps —
+// (the eTLD+1 of CRANE_DOMAIN, e.g. app.example.com → example.com) embed apps —
 // a same-org trust boundary. It's emitted as a `frame-ancestors` allowlist and
 // merged with any per-app `frame_ancestors`. A platform admin can turn it off
 // or override the domain in Settings → Security, and a single app can opt out of
@@ -9,7 +9,7 @@
 //
 // SECURITY: the wildcard base is derived via the Public Suffix List (`psl`), so
 // it is always a real registrable domain and NEVER a bare public suffix — an
-// apex CRANE_DOMAIN like `opswat.com` yields `*.opswat.com`, not `*.com`, and a
+// apex CRANE_DOMAIN like `example.com` yields `*.example.com`, not `*.com`, and a
 // value psl can't resolve to an eTLD+1 disables the default rather than
 // emitting an over-broad allowlist.
 import psl from 'psl';

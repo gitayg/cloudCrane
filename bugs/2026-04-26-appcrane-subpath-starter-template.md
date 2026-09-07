@@ -2,7 +2,7 @@
 
 **Component:** AppCrane
 **Severity:** Medium (preventative)
-**Reporter:** itay.glick@opswat.com
+**Reporter:** maintainer@example.com
 **Date:** 2026-04-26
 
 ## Summary

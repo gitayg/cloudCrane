@@ -2,7 +2,7 @@
 
 **Component:** AppCrane / docs
 **Severity:** Low (docs-only, but high cumulative pain)
-**Reporter:** itay.glick@opswat.com
+**Reporter:** maintainer@example.com
 **Date:** 2026-04-26
 
 ## Summary

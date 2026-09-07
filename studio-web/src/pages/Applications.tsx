@@ -592,8 +592,8 @@ export function Applications() {
     const help = "Allowed embedders (CSP frame-ancestors syntax).\n\n" +
       "Examples:\n" +
       "  'self'                              (default — only same origin)\n" +
-      "  'self' https://my.opswat.com        (also allow MyOPSWAT)\n" +
-      "  'self' https://*.opswat.com         (any opswat.com subdomain)\n\n" +
+      "  'self' https://portal.example.com   (also allow one external portal)\n" +
+      "  'self' https://*.example.com        (any example.com subdomain)\n\n" +
       "Leave blank to reset to default.";
     const val = prompt(help, app.frame_ancestors ?? '')
     if (val === null) return

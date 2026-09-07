@@ -543,7 +543,7 @@ test('app mail names the sending app on the From line the recipient sees', async
   // Display name only. The address is the platform mailbox; a per-app address
   // would be a real sender identity rather than a label.
   assert.ok(/<[^>]*@[^>]*>/.test(from), `no envelope address on the From line: ${from}`);
-  assert.equal(m.envelope.from, 'aimi@opswat.com',
+  assert.equal(m.envelope.from, 'appcrane@example.com',
     'the app influenced the envelope sender, not just the display name');
 });
 

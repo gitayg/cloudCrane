@@ -55,7 +55,7 @@ test('a host at or above the floor boots without touching anything', () => {
   assert.equal(r.decision, 'ok');
 });
 
-test('a host BELOW the floor is identified for upgrade — the app.opswat.com case', () => {
+test('a host BELOW the floor is identified for upgrade — the app.example.com case', () => {
   const r = decide({ node: `>=${CURRENT + 2}` });
   assert.equal(r.have, String(CURRENT));
   assert.equal(r.want, String(CURRENT + 2));

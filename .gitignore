@@ -21,3 +21,6 @@ studio-web/src/**/*.d.ts
 # duplicate of a real page's script.
 *.squash_*.js
 .DS_Store
+
+# Productizer hygiene pattern list — names private strings, must never be committed.
+.claude/productizer/hygiene-local.txt

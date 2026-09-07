@@ -8,8 +8,8 @@
  * After MAX_ATTEMPTS a row is dead-lettered and the platform admin is emailed
  * so a broken relay surfaces to a human, not just a log line.
  *
- * Recipient policy: a message may only go to a KNOWN SSO user's email on the
- * configured recipient domain (default opswat.com). This bounds the service to
+ * Recipient policy: a message may only go to the email of a KNOWN, active
+ * platform user (see assertValidRecipient). This bounds the service to
  * "notify a platform user" — no arbitrary recipients, no spam vector.
  */
 

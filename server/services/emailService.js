@@ -229,7 +229,7 @@ export async function notifyDeploy(app, env, version, status, errorMsg) {
   }
 
   for (const config of configs) {
-    // v2.21.29: send as the app's own name ("AgentClub <aimi@opswat.com>").
+    // v2.21.29: send as the app's own name ("AgentClub <appcrane@example.com>").
     // Without fromName the transport emits no display name and the recipient's
     // client falls back to the shared mailbox's directory name ("AIMI"), so
     // every app's notifications looked identical. The address stays
@@ -267,7 +267,7 @@ export async function notifyHealthChange(appId, env, status) {
   }
 
   for (const config of configs) {
-    // v2.21.29: send as the app's own name ("AgentClub <aimi@opswat.com>").
+    // v2.21.29: send as the app's own name ("AgentClub <appcrane@example.com>").
     // Without fromName the transport emits no display name and the recipient's
     // client falls back to the shared mailbox's directory name ("AIMI"), so
     // every app's notifications looked identical. The address stays

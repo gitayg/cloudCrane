@@ -1,7 +1,7 @@
 /**
  * Same-origin redirect validation (v2.35.0).
  *
- * A credentialed WAS scan of app.opswat.com proved an open redirect: requesting
+ * A credentialed WAS scan of app.example.com proved an open redirect: requesting
  * `/login?redirect=//attacker.com` landed the browser on `https://attacker.com/`.
  * Three separate call sites guarded with `redirect.startsWith('/')`, which is
  * NOT a same-origin test —
@@ -14,7 +14,7 @@
  * a second slash.
  *
  * The value of an open redirect to an attacker is that the link they send is
- * genuinely on your domain — the victim inspects `app.opswat.com/login?...`,
+ * genuinely on your domain — the victim inspects `app.example.com/login?...`,
  * sees the real host, and is then bounced somewhere else. It is a phishing
  * amplifier, which is why it stays worth fixing even though nothing is
  * "breached" by the redirect itself. CWE-601.
