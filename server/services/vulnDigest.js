@@ -91,8 +91,19 @@ function readFindings(list, where) {
  */
 function vulnerableApps(db) {
   if (!scansTableExists(db)) return [];
+  // Owner identity, not just the id. The platform digest lists apps the reader
+  // does not own, and "chatwoot has 3 vulnerable packages" leaves an admin with
+  // a second lookup before they can tell anyone. Resolving it here keeps that
+  // join in one place rather than in the renderer.
+  //
+  // `created_by` is the definition of owner this digest has always used. It is
+  // not the only one — app_user_roles carries an 'owner' role too — but changing
+  // which one counts would silently re-address the mail, so it stays as it was.
   const owners = new Map(
-    db.prepare('SELECT id, created_by FROM apps').all().map((a) => [a.id, a.created_by])
+    db.prepare(`
+      SELECT a.id, a.created_by, u.name AS owner_name, u.email AS owner_email
+      FROM apps a LEFT JOIN users u ON u.id = a.created_by
+    `).all().map((a) => [a.id, a]),
   );
   const out = [];
   for (const r of fleetScanSummary(db)) {
@@ -103,7 +114,9 @@ function vulnerableApps(db) {
       appName: r.name || r.slug,
       slug: r.slug,
       env: r.env,
-      ownerId: owners.get(r.app_id) ?? null,
+      ownerId: owners.get(r.app_id)?.created_by ?? null,
+      ownerName: owners.get(r.app_id)?.owner_name ?? null,
+      ownerEmail: owners.get(r.app_id)?.owner_email ?? null,
       scannedAt: r.scanned_at || null,
       findings,
     });
@@ -174,9 +187,19 @@ function renderDigest(recipient, date) {
   // that gets a real advisory ignored.
   const fixLabel = (f) => (f.fixed ? `fix: ${f.fixed}` : 'no fixed version published');
 
+  // Named only in the fleet digest. An owner reading their own scoped mail does
+  // not need to be told who owns these — they do — and repeating their address
+  // back at them reads like a mistake. The admin is the one who has to work out
+  // who to tell, which is the whole reason this is here.
+  const showOwner = recipient.scope === 'platform';
+  const ownerLabel = (a) => (a.ownerName || a.ownerEmail
+    ? `${a.ownerName || a.ownerEmail}${a.ownerName && a.ownerEmail ? ` <${a.ownerEmail}>` : ''}`
+    : 'no owner recorded');
+  const ownerSuffix = (a) => (showOwner ? ` — owner: ${ownerLabel(a)}` : '');
+
   let text = `${scopeLine}\n\n`;
   for (const a of recipient.apps) {
-    text += `${a.appName} (${a.env}) — ${a.findings.length} vulnerable package${a.findings.length === 1 ? '' : 's'}\n`;
+    text += `${a.appName} (${a.env}) — ${a.findings.length} vulnerable package${a.findings.length === 1 ? '' : 's'}${ownerSuffix(a)}\n`;
     for (const f of a.findings) {
       text += `  - ${f.name} ${f.version} (${f.ecosystem}) — ${f.ids.join(', ')} — ${fixLabel(f)}\n`;
     }
@@ -195,7 +218,8 @@ function renderDigest(recipient, date) {
     )).join('');
     return `<div style="margin:22px 0 0;">` +
       `<div style="font-size:15px;font-weight:600;color:#111827;padding-bottom:6px;border-bottom:2px solid #e5e7eb;">` +
-        `${esc(a.appName)} <span style="font-weight:400;color:#6b7280;">&middot; ${esc(a.env)} &middot; ${a.findings.length}</span></div>` +
+        `${esc(a.appName)} <span style="font-weight:400;color:#6b7280;">&middot; ${esc(a.env)} &middot; ${a.findings.length}` +
+        `${showOwner ? ` &middot; owner: ${esc(ownerLabel(a))}` : ''}</span></div>` +
       `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">${rows}</table>` +
     `</div>`;
   }).join('');

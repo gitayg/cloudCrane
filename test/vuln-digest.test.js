@@ -73,10 +73,10 @@ function mkScan(appId, env, findings) {
          findings.length ? 'findings' : 'ok', 42, JSON.stringify(findings)).lastInsertRowid;
 }
 
-const alice = mkUser('Alice', 'alice@opswat.com', 'user');
-const bob   = mkUser('Bob',   'bob@opswat.com',   'user');
-const carol = mkUser('Carol', 'carol@opswat.com', 'user');
-const root  = mkUser('Root',  'root@opswat.com',  'platform_admin');
+const alice = mkUser('Alice', 'alice@example.com', 'user');
+const bob   = mkUser('Bob',   'bob@example.com',   'user');
+const carol = mkUser('Carol', 'carol@example.com', 'user');
+const root  = mkUser('Root',  'root@example.com',  'platform_admin');
 
 const billing   = mkApp('Billing',   'billing',   alice);
 const intranet  = mkApp('Intranet',  'intranet',  bob);
@@ -120,23 +120,23 @@ test('an app owner is scoped to their own apps; a platform admin gets the fleet'
   const byEmail = new Map(recipients.map(r => [r.email, r]));
 
   assert.deepEqual([...byEmail.keys()].sort(),
-    ['alice@opswat.com', 'bob@opswat.com', 'carol@opswat.com', 'root@opswat.com']);
+    ['alice@example.com', 'bob@example.com', 'carol@example.com', 'root@example.com']);
 
-  assert.equal(byEmail.get('root@opswat.com').scope, 'platform');
-  assert.deepEqual(byEmail.get('root@opswat.com').apps.map(a => a.slug).sort(),
+  assert.equal(byEmail.get('root@example.com').scope, 'platform');
+  assert.deepEqual(byEmail.get('root@example.com').apps.map(a => a.slug).sort(),
     ['billing', 'intranet', 'telemetry']);
 
-  assert.equal(byEmail.get('alice@opswat.com').scope, 'owner');
-  assert.deepEqual(byEmail.get('alice@opswat.com').apps.map(a => a.slug), ['billing']);
-  assert.deepEqual(byEmail.get('bob@opswat.com').apps.map(a => a.slug), ['intranet']);
-  assert.deepEqual(byEmail.get('carol@opswat.com').apps.map(a => a.slug), ['telemetry']);
+  assert.equal(byEmail.get('alice@example.com').scope, 'owner');
+  assert.deepEqual(byEmail.get('alice@example.com').apps.map(a => a.slug), ['billing']);
+  assert.deepEqual(byEmail.get('bob@example.com').apps.map(a => a.slug), ['intranet']);
+  assert.deepEqual(byEmail.get('carol@example.com').apps.map(a => a.slug), ['telemetry']);
 });
 
 test('the mail names the app, the package, the ecosystem, the advisory and the fix', () => {
   const res = sendVulnDigest(db);
   assert.equal(res.sent, 4);
 
-  const a = rowFor('alice@opswat.com');
+  const a = rowFor('alice@example.com');
   assert.ok(a, 'owner digest was enqueued');
   assert.match(a.body_text, /Billing \(production\)/);
   // The whole line, not its pieces: the reader has to be able to go from this
@@ -160,20 +160,20 @@ test('the mail names the app, the package, the ecosystem, the advisory and the f
   assert.doesNotMatch(a.body_text, /Intranet|GHSA-axios-1/);
   assert.doesNotMatch(a.body_html, /Intranet|GHSA-axios-1/);
 
-  const r = rowFor('root@opswat.com');
+  const r = rowFor('root@example.com');
   assert.match(r.body_text, /Billing \(production\)/);
   assert.match(r.body_text, /Intranet \(production\)/);
   assert.match(r.body_text, /Telemetry \(production\)/);
   assert.match(r.body_text, /GHSA-axios-1/);
 
-  assert.equal(a.idempotency_key, `vuln-digest:${today}:alice@opswat.com`);
+  assert.equal(a.idempotency_key, `vuln-digest:${today}:alice@example.com`);
   assert.equal(a.app_id, null);
   assert.equal(a.source, 'vuln-digest');
   assert.equal(a.status, 'queued');
 });
 
 test('one scan can mix ecosystems, and every line names its own', () => {
-  const c = rowFor('carol@opswat.com');
+  const c = rowFor('carol@example.com');
   assert.ok(c, 'owner digest was enqueued');
 
   const lines = c.body_text.split('\n').filter(l => l.startsWith('  - '));
@@ -350,4 +350,90 @@ test('today() returns the LOCAL date, matching the clock the hour gate uses', ()
   assert.ok(discriminating > 0,
     `no probed timezone was on a different date from UTC, so a UTC day key would have passed ` +
     `every assertion above (straddler was ${straddler}, UTC hour ${new Date().getUTCHours()})`);
+});
+
+// ---------------------------------------------------------------------------
+// Owner attribution in the fleet digest (v2.59.0)
+// ---------------------------------------------------------------------------
+//
+// The platform digest lists apps the reader does not own. "telemetry has 3
+// vulnerable packages" leaves an admin holding a finding and no idea who to
+// tell — a lookup sitting between the alert and anyone acting on it.
+//
+// Named ONLY in the fleet mail. An owner's scoped digest already covers exactly
+// their apps, so repeating their own address back at them reads as a bug. And
+// property 1 at the top of this file is why the fix is "name the owner in the
+// admin's mail" rather than "copy the owner on it": the fleet view discloses
+// which OTHER apps are vulnerable.
+//
+// These seed their own fixtures. Earlier tests in this file clear scans to
+// assert the clean-fleet silence, so the module-level fixtures are gone by here.
+
+function seedOwnerFixture() {
+  // An earlier test drops this table to exercise the missing-migration guard,
+  // so recreate it rather than depend on the module-level fixture surviving.
+  db.exec(`CREATE TABLE IF NOT EXISTS app_vuln_scans (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  app_id        INTEGER NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+  env           TEXT    NOT NULL,
+  scanned_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+  source        TEXT    NOT NULL,
+  ecosystem     TEXT,
+  status        TEXT    NOT NULL,
+  package_count INTEGER NOT NULL DEFAULT 0,
+  findings_json TEXT,
+  error         TEXT
+)`);
+  const admin = mkUser('Root Two', 'root2@x.io', 'platform_admin');
+  const dana = mkUser('Dana Owner', 'dana@x.io', 'user');
+  const mine = mkApp('Dana App', 'dana-app', dana);
+  const other = mkApp('Other App', 'other-app', admin);
+  const f = [{ name: 'lodash', version: '4.17.15', ecosystem: 'npm', ids: ['GHSA-own'], fixed: '4.17.21' }];
+  mkScan(mine, 'production', f);
+  mkScan(other, 'production', f);
+  return { admin, dana };
+}
+
+test('buildDigest resolves the owner name and email, not just the id', () => {
+  seedOwnerFixture();
+  const fleet = buildDigest(db).recipients.find((r) => r.email === 'root2@x.io');
+  assert.ok(fleet, 'the platform admin should receive a fleet digest');
+  const mine = fleet.apps.find((a) => a.slug === 'dana-app');
+  assert.equal(mine.ownerName, 'Dana Owner');
+  assert.equal(mine.ownerEmail, 'dana@x.io');
+});
+
+test('the fleet mail names who owns each app; the owner mail does not', () => {
+  sendVulnDigest(db);
+
+  const admin = rowFor('root2@x.io');
+  assert.ok(admin, 'the platform admin digest was enqueued');
+  assert.match(admin.body_text, /owner: Dana Owner <dana@x\.io>/,
+    'an admin has to be able to tell who to chase without a second lookup');
+  assert.match(admin.body_html, /owner: Dana Owner/);
+
+  const owner = rowFor('dana@x.io');
+  assert.ok(owner, 'the owner digest was enqueued');
+  assert.doesNotMatch(owner.body_text, /owner:/,
+    'her mail covers exactly her apps; naming her as owner of each reads as a rendering bug');
+});
+
+test('owner attribution did not widen an owner mail into the fleet view', () => {
+  // Property 1. This is the reason the change names the owner rather than
+  // copying them onto the admin's mail.
+  const owner = rowFor('dana@x.io');
+  assert.doesNotMatch(owner.body_text, /Other App|other-app/,
+    'an owner must not learn which other apps are vulnerable');
+});
+
+test('an app with no recorded owner reports null rather than a blank name', () => {
+  const orphan = mkApp('Orphan', 'orphan-app', null);
+  mkScan(orphan, 'production', [
+    { name: 'lodash', version: '4.17.15', ecosystem: 'npm', ids: ['GHSA-orphan'], fixed: null },
+  ]);
+  const fleet = buildDigest(db).recipients.find((r) => r.email === 'root2@x.io');
+  const app = fleet.apps.find((a) => a.slug === 'orphan-app');
+  assert.ok(app, 'the orphan app should still appear in the fleet digest');
+  assert.equal(app.ownerId, null);
+  assert.equal(app.ownerName, null);
 });
