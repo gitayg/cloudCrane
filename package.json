@@ -1,6 +1,6 @@
 {
   "name": "appcrane",
-  "version": "2.58.1",
+  "version": "2.59.0",
   "engines": { "node": ">=22" },
   "description": "AppCrane - Self-service app hosting and deployment.",
   "license": "AGPL-3.0-only",
@@ -21,7 +21,8 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "test": "node --test --test-timeout=120000 test/*.test.js packages/tenant/*.test.js"
+    "test": "node --test --test-timeout=120000 test/*.test.js packages/tenant/*.test.js",
+    "gen:mcp-snapshot": "node scripts/gen-mcp-snapshot.mjs"
   },
   "overrides": {
     "follow-redirects": "^1.16.0"

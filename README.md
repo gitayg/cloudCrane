@@ -1,49 +1,60 @@
 # AppCrane
 
-**The self-hosted home for the apps your AI builds and your AI deploys.**
+**Self-hosted PaaS where the agent is the operator and the platform keeps the receipts.**
 
 [![GitHub stars](https://img.shields.io/github/stars/gitayg/appCrane?style=flat)](https://github.com/gitayg/appCrane/stargazers)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 ![Platform: Ubuntu 22.04+](https://img.shields.io/badge/platform-Ubuntu%2022.04%2B-e95420)
 
-Vibe-code an app with Claude Code or Cursor, then have your AI agent deploy it — over MCP — to a server **you** own. Docker isolation per app, SAML/OIDC SSO, per-user audit that distinguishes agents from humans, per-tenant data isolation, and a middleware hard-wall so the platform operator can't read your app secrets.
+AppCrane runs the internal apps your team builds with Claude Code or Cursor, on a server you own. An agent creates the app, deploys it, reads the logs and rolls it back through 57 MCP tools — no browser, no curl — while the platform enforces SSO and per-app roles, records every action against the actor that took it (tagged **agent** or **human**), and keeps app secrets out of reach of the person administering the box.
 
-**MCP-first.** AI agents connect once via `claude mcp add ... /api/mcp` and operate the platform through 44 `appcrane_*` tools — create, deploy, read logs, set env, **roll back**. No curl, no separate scripts. `appcrane_get_guide(topic="onboarding"|"operations")` returns the current playbook on demand.
+It is for teams that have to self-host — data residency, a customer contract, an internal-only network — and still have to answer *who deployed this, what was in it, and can we undo it?*
 
-## Why AppCrane
+## What is actually uncommon here
 
-Tools for AI-built internal apps split cleanly along two axes, and one corner is empty:
+Self-hosted PaaS caught up on governance during 2026. Coolify shipped structured audit logging and first-class OIDC; Dokploy shipped SSO, SCIM, custom roles and audit logs. Komodo has had [granular per-resource permissions](https://komo.do/docs/configuration/permissioning) and a full audit trail for longer than either. Most of what used to be a differentiator here no longer is, and the claims below are the ones that survived checking their docs. Four things still stand out:
 
-|  | **Ungoverned** | **Governed** |
-|---|---|---|
-| **Vendor-hosted** | v0, Bolt.new | Lovable, Replit, Retool, Superblocks — mature governance (Replit Enterprise ships SCIM, IdP-group RBAC, SIEM audit streaming and dependency CVE scanning), but your app data, DB connections and API keys run on *their* infrastructure, not yours |
-| **Self-hosted** | Coolify, Dokku, CapRover, Dokploy — your infra, but no SSO, no RBAC, no per-user audit, no tenancy model | **AppCrane** |
+**1. Governance is in the open-source build, not behind a license key.** SAML 2.0, OIDC, SCIM provisioning, per-app roles and the audit log are all in the AGPL-3.0 build with nothing to activate. Dokploy ships the same category of capability as [Enterprise](https://docs.dokploy.com/docs/core/enterprise), gated on a license key. Coolify's are free, but its changelog lists OIDC and audit logging without SAML or SCIM. Komodo's are free too — GPL-3.0, with per-resource permissions and an audit trail in the box — but its [documented sign-on](https://komo.do/docs/intro) is username/password and OAuth (GitHub, Google, generic OIDC), with no SAML or SCIM in the docs. So the free-versus-paid line is really only Dokploy's; against Coolify and Komodo the difference is which enterprise-directory protocols are covered, not what you have to pay to turn them on.
 
-You can have governance, or you can have your own infrastructure. Every other option makes you pick. That gap is the entire reason this exists — it was built for a company that needed both and found nothing that did both.
+**2. The built-in agent interface can change things.** Coolify's instance-level MCP server is deliberately **read-only** — ten list/get tools. AppCrane's 57 include `appcrane_deploy`, `appcrane_rollback`, `appcrane_promote`, `appcrane_set_secret` and `appcrane_grant_app_access`. Dokploy's official MCP package is write-capable too, and far larger (508 tools across 49 categories) — AppCrane's surface is smaller by choice, not by capability, and is paired with `appcrane_get_guide(topic="onboarding"|"operations")`, which serves the current playbook from the server so the agent reads the procedure instead of inferring it from a tool list. Komodo ships no MCP server of its own; neither its [repo](https://github.com/moghtech/komodo) nor its docs contain one, and the several that exist are third-party wrappers over its REST API.
+
+**3. The audit log tells an agent from a person.** Every row carries `actor_kind`, so "what did the agents do on this box last week" is one query. The others record a user identity — Komodo's trail records "who made it and when" ([intro](https://komo.do/docs/intro)) — but none of their docs describe separating automated actors from humans.
+
+**4. The operator is locked out of app secrets.** Env-var access follows app assignment, and that holds for `platform_admin` as well — the role that installs and updates the platform cannot read the plaintext of an app it is not assigned to. Reveals are throttled and audited across both doors, HTTP and MCP, so switching transport does not buy a fresh allowance. Komodo documents the opposite arrangement explicitly: marking a variable secret prevents access to the value for [non-admin users](https://komo.do/docs/configuration/variables), which is to say an admin can read it.
+
+Four more that are unusual but worth measuring against your own requirements rather than reading as headlines: **per-tenant data isolation** for deployed apps; repo-less uploads identified by a **server-side SHA-256 over the received bytes** instead of a self-reported commit SHA; a **daily vulnerability digest** mailed per recipient — fleet-wide to a platform admin, own-apps-only to an app owner, so the digest cannot leak which other apps are exposed; and **managed repos**, so an agent can create and ship an app for someone who has no GitHub account at all.
+
+Versus vendor-hosted governed platforms (Replit, Lovable, Retool, Superblocks), the trade is the usual one: their governance is more mature, and your app data, database connections and API keys live on their infrastructure.
+
+### Against self-hosted PaaS
+
+| | AppCrane | Coolify | Dokploy | Komodo | CapRover / Dokku |
+|---|---|---|---|---|---|
+| Multi-host / fleet deploys | **no — single host** | yes (experimental) | yes, remote servers | yes, agent per host | Swarm cluster (CapRover) |
+| Built-in MCP that can deploy | 57 tools, incl. rollback | 10 tools, **read-only** | 508 tools (official package), incl. rollback | community projects only | community projects only |
+| SAML 2.0 | yes | not in changelog | Enterprise | not documented | no |
+| OIDC | yes | yes (v4.4-rc.1) | Enterprise | yes, generic OIDC | no |
+| SCIM provisioning | yes | not in changelog | Enterprise | not documented | no |
+| Audit log | yes, agent vs human attributed | yes, structured (v4.1.0) | Enterprise | yes, full change trail | no |
+| Governance behind a paid tier | no | no | yes | no | n/a |
+| Operator cannot read app secrets | yes | not documented | not documented | **no — admins can** | no |
+| Per-tenant data isolation for apps | yes | not documented | not documented | not documented | no |
+| Deploy identity for repo-less uploads | server-side SHA-256 | not documented | not documented | not documented | no |
+| Core license | AGPL-3.0 | Apache-2.0 | Apache-2.0 + paid Enterprise | GPL-3.0 | open source |
+
+The first row is the one AppCrane loses outright. [Komodo](https://github.com/moghtech/komodo) is built around fleet management: a Core web server plus a stateless [Periphery agent](https://komo.do/docs/setup/connect-servers) on every connected machine, with "no limit to the number of servers you can connect", Docker Swarm management, and declarative resource sync from a git repo. AppCrane has no agent, no host registry and no remote-execution path — it deploys containers on the machine it is installed on, and that is the whole design. [Coolify](https://coolify.io/docs/knowledge-base/server/multiple-servers) and [Dokploy](https://docs.dokploy.com/docs/core/remote-servers) both reach other servers too, and [CapRover](https://caprover.com/docs/app-scaling-and-cluster.html) joins nodes through Docker Swarm.
+
+CapRover and Dokku are in one column because their access model is the same shape: a single admin account (CapRover) or SSH keys where the word `admin` in a key name grants key-management rights (Dokku), with multi-user access an [explicitly out-of-scope](https://github.com/caprover/caprover/discussions/1315) request in one and an unaudited community plugin in the other. That is a reasonable design for a one-operator box; it is not something to put an IdP in front of.
+
+> Checked against each project's own documentation and changelog in September 2026. **"not documented"** means the capability does not appear in their docs — that is not proof it is absent, and a vendor page is a claim, not a test. Verify anything load-bearing on your own install.
+
+**Honest scope.** Coolify has a far larger template marketplace, a much bigger community, and multi-server orchestration; if you want one-click Postgres and hundreds of app templates, use Coolify. Dokploy's API surface is broader than AppCrane's and it sells support with an SLA. Komodo is the better choice the moment the answer involves more than one machine — a fleet of hosts, a Swarm, builds farmed out to spot instances, configuration synced declaratively from git; AppCrane deploys to the box it runs on and nowhere else, so a multi-host estate is not a smaller version of this, it is a different product. Dokku and CapRover are simpler and lighter if one person operates the box. Choose AppCrane when the apps are agent-built, the agent should do the deploying, everything lands on one server you own, and someone will later ask you to prove who did what.
 
 **Why it matters now.** Three things changed in 2026:
 
 - **The bottleneck moved from writing software to operating it.** In Anthropic's [Claude Code study](https://www.anthropic.com/research/claude-code-expertise) (~400k sessions), "operating software" — deploying, configuring, running pipelines — grew from 14% to 21% of sessions while fixing broken code fell from 33% to 19%. Non-engineers now ship deployable code within 7 points of professional engineers. The scarce thing isn't the app any more; it's somewhere safe to run it.
 - **Shadow AI became measurable.** The [2026 Verizon DBIR](https://www.verizon.com/business/resources/reports/dbir/) reports shadow-AI detections up 4×, AI use on corporate devices rising 15% → 45% in a year with 67% through non-corporate accounts — and source code as the most commonly submitted data type. Bans make it worse; a sanctioned platform is the answer that works.
 - **Governance-by-console is the failure mode.** Platforms that gate every app behind a human clicking through an approval UI stall once there are hundreds of apps. AppCrane's answer is different in kind: the **agent** drives the governed lifecycle over MCP, and the platform records and constrains it — rather than a person mediating each step.
-
-### Against self-hosted PaaS
-
-| Feature | AppCrane | Coolify | Dokploy |
-|---|---|---|---|
-| Agent-first / MCP-native | ✅ | ~ thin | ~ 508 flat tools |
-| MCP rollback (undo, not just redeploy) | ✅ | ❌ | ✅ |
-| Enterprise SSO (SAML/OIDC/SCIM) | ✅ | ~ | ❌ paid tier |
-| Per-user audit, agent vs human attributed | ✅ | ~ | ❌ |
-| Per-tenant DB + storage isolation | ✅ | ❌ | ❌ |
-| Secret hard-wall (operator can't read) | ✅ | ❌ | ❌ |
-| Managed repo (no GitHub account needed) | ✅ | ❌ | ❌ |
-| Self-hosted, your infra | ✅ | ✅ | ✅ |
-| Open source | ✅ AGPL-3.0 | ✅ Apache-2.0 | ✅ Apache-2.0 |
-
-**Honest scope:** Coolify has a far larger template marketplace, a bigger community, and multi-server orchestration. If you want one-click Postgres and 280 app templates, use Coolify. Choose AppCrane when the apps are AI-built, the agent should do the deploying, and you need to prove afterwards who did what.
-
-**Full matrix** vs AWS Copilot / App Runner / Lightsail / CodeDeploy / Vercel → **[glick.run/comparison.html](https://glick.run/comparison.html)**
 
 ## Features
 
@@ -64,7 +75,7 @@ You can have governance, or you can have your own infrastructure. Every other op
 - **Encrypted env vars** (AES-256-GCM) — admin cannot read them by design
 - **Health checks** with auto-restart and email notifications
 - **Audit log** for every action
-- **MCP server** at `/api/mcp` exposing 44 `appcrane_*` tools — agents operate the platform without ever touching curl, gh, or shell
+- **MCP server** at `/api/mcp` exposing 57 `appcrane_*` tools — agents operate the platform without ever touching curl, gh, or shell
 
 ## Quick Start
 
@@ -225,10 +236,10 @@ crane audit --app myapp
 
 ## MCP (for AI agents)
 
-AppCrane is MCP-first. One `claude mcp add` and the agent gets 42
-`appcrane_*` tools — list apps, deploy, set/get secrets, read logs,
-manage access, rotate icons, the lot. Tool names are AWS-aligned
-(`stage`, `set_secret`/`get_secret`, `cp`).
+AppCrane is MCP-first. One `claude mcp add` and the agent gets 57
+`appcrane_*` tools — list apps, deploy, roll back, set/get secrets, read
+logs, manage access, scan for vulnerable dependencies, the lot. Tool
+names are AWS-aligned (`stage`, `set_secret`/`get_secret`, `cp`).
 
 ```bash
 claude mcp add --transport http appcrane https://crane.example.com/api/mcp \
