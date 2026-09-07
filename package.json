@@ -34,7 +34,7 @@
     "chalk": "^5.4.1",
     "commander": "^15.0.0",
     "express": "^5.1.0",
-    "multer": "^2.0.0",
+    "multer": "^2.3.0",
     "nodemailer": "^9.0.5",
     "psl": "^1.15.0"
   }
