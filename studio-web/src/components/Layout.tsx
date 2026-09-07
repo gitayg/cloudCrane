@@ -149,7 +149,7 @@ export function Layout({ children, subItems, activeSub }: Props) {
     adminApi.get<{ user: { name: string; email?: string; role: string; can_create_apps?: boolean } }>('/api/auth/me')
       .then(d => {
         // v2.7.16: show "email (humanized role)" in the topbar, e.g.
-        // "itay.glick@opswat.com (platform admin)". Falls back to name if
+        // "maintainer@example.com (platform admin)". Falls back to name if
         // the user has no email; omits the parens when role is empty.
         const role = d.user.role || ''
         const roleLabel = role.replace(/_/g, ' ')

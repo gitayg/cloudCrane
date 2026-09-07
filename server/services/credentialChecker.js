@@ -10,13 +10,16 @@
  *
  * State is persisted in settings.credcheck_state so we alert on the *transition*
  * to failing (not every tick), re-alert at most once a day while still failing,
- * and send a one-line recovery notice when it comes back.
+ * and send a one-line recovery notice when it comes back. Each state entry
+ * carries the probe's `fix` breadcrumb and `href` so GET /api/credentials/health
+ * can serve both to the dashboard banner without re-deriving them.
  *
  * Caveat: if the failing credential is Graph itself and Graph is the only mail
  * transport, the alert email can't be delivered — that case is logged loudly
  * (ERROR) so it surfaces in the server logs / log drain.
  */
 
+import { hostname } from 'os';
 import { getDb } from '../db.js';
 import { sendEmail } from './emailService.js';
 import { probeGraph } from './graphMailer.js';
@@ -29,10 +32,85 @@ const RE_ALERT_MS = 24 * 60 * 60_000;     // renotify at most once/day while bro
 const STATE_KEY = 'credcheck_state';
 let timer = null;
 
-const PROBES = [
-  { name: 'Microsoft Graph (email)', fix: 'Settings → Mail', run: probeGraph },
-  { name: 'GitHub service account',  fix: 'Settings → GitHub', run: probeServiceAccount },
+// `fix` is the human breadcrumb (CredentialAlertBanner renders it, the health
+// route serves it); `href` is the same destination as something clickable —
+// a real SPA route + Settings tab hash (studio-web/src/pages/Settings.tsx
+// VALID_TABS). Both are kept: dropping `fix` would blank the banner.
+export const PROBES = [
+  { name: 'Microsoft Graph (email)', fix: 'Settings → Mail',   href: '/settings#mail',   run: probeGraph },
+  { name: 'GitHub service account',  fix: 'Settings → GitHub', href: '/settings#github', run: probeServiceAccount },
 ];
+
+/** Breadcrumb + in-app path for a probe name, for callers holding only the name. */
+export function probeLink(name) {
+  const p = PROBES.find(x => x.name === name);
+  return p ? { fix: p.fix, href: p.href } : null;
+}
+
+/**
+ * Which AppCrane this is. An admin running more than one instance could not act
+ * on the old alert at all — every box sent a byte-identical "[AppCrane] GitHub
+ * service account credential is FAILING". CRANE_DOMAIN is the instance's public
+ * identity; when it is unset (dev / direct-IP boxes) the OS hostname still
+ * tells two machines apart, which is the whole point of naming it.
+ */
+function instanceName() {
+  return craneDomain() || hostname();
+}
+
+function craneDomain() {
+  return (process.env.CRANE_DOMAIN || '').trim();
+}
+
+/**
+ * Absolute https URL to the page that fixes `probe`, or null when CRANE_DOMAIN
+ * is unset. Deliberately null rather than a guessed origin: the alternatives
+ * are mailing `https://undefined/settings#github`, or a bare `/settings#github`
+ * that no mail client can turn into a link — both worse than the breadcrumb.
+ * (server/routes/saml.js falls back to http://localhost:PORT for its own base
+ * URL; that is right for a SAML callback the server itself resolves, and wrong
+ * for a link a human reads on another machine.)
+ */
+function fixUrl(probe) {
+  const domain = craneDomain();
+  return domain ? `https://${domain}${probe.href}` : null;
+}
+
+/** Where-to-go line: a clickable URL when we know the domain, breadcrumb otherwise. */
+function fixDirection(probe) {
+  const url = fixUrl(probe);
+  return url ? `Fix it here: ${url}` : `Fix it in ${probe.fix} on this instance.`;
+}
+
+/** Subject + body for the "credential stopped working" alert. Exported for tests. */
+export function buildFailureAlert(probe, result, now) {
+  const instance = instanceName();
+  return {
+    subject: `[AppCrane: ${instance}] ${probe.name} credential is FAILING`,
+    body:
+      `Instance: ${instance}\n\n` +
+      `This AppCrane's ${probe.name} credential stopped working.\n\n` +
+      `Checked: ${new Date(now).toISOString()}\n` +
+      `Error: ${result.error || '(no detail)'}\n\n` +
+      `This usually means the token/secret expired, was rotated, or was revoked.\n` +
+      `${fixDirection(probe)}\n` +
+      `You'll get a recovery notice once it works again.\n`,
+  };
+}
+
+/** Subject + body for the recovery notice — same addressing as the alert it clears. */
+export function buildRecoveryAlert(probe, now) {
+  const instance = instanceName();
+  const url = fixUrl(probe);
+  return {
+    subject: `[AppCrane: ${instance}] ${probe.name} credential RECOVERED`,
+    body:
+      `Instance: ${instance}\n\n` +
+      `This AppCrane's ${probe.name} credential is working again as of ` +
+      `${new Date(now).toISOString()}.\n` +
+      (url ? `Settings: ${url}\n` : ''),
+  };
+}
 
 function loadState(db) {
   try {
@@ -86,14 +164,8 @@ async function runOnce(probes = PROBES) {
       const firstFailure = prev.ok !== false;
       const staleAlert = prev.lastAlertAt && (now - prev.lastAlertAt) >= RE_ALERT_MS;
       if (firstFailure || staleAlert) {
-        const when = new Date(now).toISOString();
-        await alertAdmins(db,
-          `[AppCrane] ${probe.name} credential is FAILING`,
-          `AppCrane's ${probe.name} credential stopped working.\n\n` +
-          `Checked: ${when}\n` +
-          `Error: ${result.error || '(no detail)'}\n\n` +
-          `This usually means the token/secret expired, was rotated, or was revoked.\n` +
-          `Fix it in ${probe.fix}. You'll get a recovery notice once it works again.\n`);
+        const { subject, body } = buildFailureAlert(probe, result, now);
+        await alertAdmins(db, subject, body);
         log.error(`[credcheck] ${probe.name} FAILING: ${result.error || '(no detail)'}`);
       }
       state[probe.name] = {
@@ -102,12 +174,12 @@ async function runOnce(probes = PROBES) {
         lastAlertAt: (firstFailure || staleAlert) ? now : prev.lastAlertAt,
         error: result.error || null,
         fix: probe.fix,
+        href: probe.href,
       };
     } else {
       if (prev.ok === false) {
-        await alertAdmins(db,
-          `[AppCrane] ${probe.name} credential RECOVERED`,
-          `AppCrane's ${probe.name} credential is working again as of ${new Date(now).toISOString()}.\n`);
+        const { subject, body } = buildRecoveryAlert(probe, now);
+        await alertAdmins(db, subject, body);
         log.info(`[credcheck] ${probe.name} recovered`);
       }
       state[probe.name] = { ok: true };

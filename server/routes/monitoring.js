@@ -77,7 +77,36 @@ router.get('/dashboard/app-cpu', requireAdmin, (req, res) => {
  * platform_admin only — this is sensitive operational detail (which integration
  * is down), deliberately NOT surfaced on the public /api/info. Closes the gap
  * where a dead Graph mail token can't email its own failure alert.
+ *
+ * `href` (added alongside the existing `fix` breadcrumb) is the clickable route
+ * to the page that repairs the credential, so the banner is one click from the
+ * fix instead of asking a paged admin to hunt for "Settings → GitHub". It is
+ * OPTIONAL: state rows written by an older checker (or by a checker that could
+ * not build a URL) carry no href, and the field is then omitted entirely rather
+ * than sent as null — the banner falls back to plain `fix` text.
  */
+
+/**
+ * The banner renders this straight into an <a href>. The value is read back out
+ * of the settings table, so a `javascript:`/`data:` string written there — by a
+ * future bug or by anyone who can write settings — would run in a platform
+ * admin's session on click. Allow only a same-origin path or an http(s) URL.
+ *
+ * Also rejects a host of literally "undefined"/"null": the href is built from
+ * CRANE_DOMAIN, which is frequently unset, and `https://undefined/settings` is
+ * a dead link that looks like a real one.
+ */
+function safeCredentialHref(value) {
+  if (typeof value !== 'string') return null;
+  const href = value.trim();
+  if (!href) return null;
+  if (href.startsWith('//')) return null;              // protocol-relative → off-origin
+  if (href.startsWith('/')) return href;               // same-origin path
+  const m = /^https?:\/\/([^/?#]+)/i.exec(href);
+  if (!m) return null;
+  return /^(undefined|null)(:\d+)?$/i.test(m[1]) ? null : href;
+}
+
 router.get('/credentials/health', requirePlatformAdmin, (req, res) => {
   const db = getDb();
   let state = {};
@@ -87,7 +116,12 @@ router.get('/credentials/health', requirePlatformAdmin, (req, res) => {
   } catch (_) { /* treat unreadable state as "nothing failing" */ }
   const failing = Object.entries(state)
     .filter(([, s]) => s && s.ok === false)
-    .map(([name, s]) => ({ name, since: s.since || null, error: s.error || null, fix: s.fix || null }));
+    .map(([name, s]) => {
+      const entry = { name, since: s.since || null, error: s.error || null, fix: s.fix || null };
+      const href = safeCredentialHref(s.href);
+      if (href) entry.href = href;
+      return entry;
+    });
   res.json({ ok: failing.length === 0, failing });
 });
 
