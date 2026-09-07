@@ -1,0 +1,48 @@
+{
+  "version": 2,
+  "source_of_truth": "issues",
+  "spec": {
+    "path": ".claude/sdlc/spec.md",
+    "requirement_id_prefix": "R",
+    "ids_are_permanent": true,
+    "on_supersede": "mark_with_pointer",
+    "on_contradiction": "ask_human",
+    "audit_record": "git_diff"
+  },
+  "intent": {
+    "channels": [
+      "file",
+      "text",
+      "github_issue"
+    ],
+    "persist": false
+  },
+  "artifacts": {
+    "path": "docs/sdlc/<slug>",
+    "per_change": [
+      "plan.md",
+      "REVIEW.md"
+    ],
+    "commit_each_stage": true
+  },
+  "github": {
+    "repo": "gitayg/appCrane",
+    "default_branch": "main",
+    "gh_account": "gitayg",
+    "pr_draft_first": true,
+    "issues": {
+      "label": "sdlc",
+      "branch_pattern": "feature/<issue>-<slug>",
+      "pr_title_pattern": "#<issue>: <summary>",
+      "stage_labels": {
+        "design": "sdlc:design",
+        "build": "sdlc:build",
+        "test": "sdlc:test",
+        "deploy": "sdlc:deploy",
+        "done": "sdlc:done"
+      }
+    }
+  },
+  "jira": null,
+  "_note": "Stage 6 bands live here (ops/bands.yaml). Intents are labelled GitHub Issues on this repo."
+}

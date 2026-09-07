@@ -36,6 +36,8 @@ function SecurityTab() {
   const [samlCert, setSamlCert] = useState('')
   const [samlSaved, flashSamlSaved] = useFlash()
 
+  const [catalogEnabled, setCatalogEnabled] = useState(true)
+  const [catalogSaved, flashCatalogSaved] = useFlash()
   const [scim, setScim] = useState({ enabled: false, base_url: '', token_created_at: '' })
   const [scimSaved, flashScimSaved] = useFlash()
   const [scimToken, setScimToken] = useState('')
@@ -63,6 +65,9 @@ function SecurityTab() {
       if (r) setSaml({ enabled: r.enabled, provider_name: r.provider_name, idp_sso_url: r.idp_sso_url, idp_cert_set: r.idp_cert_set, auto_provision: r.auto_provision })
     }).catch(() => {})
     adminApi.get<typeof scim>('/api/auth/scim/config').then(r => { if (r) setScim(r) }).catch(() => {})
+    // Absent row means enabled - only an explicit '0' turns the catalogue off.
+    adminApi.get<{ value?: string | null }>('/api/settings/catalog_enabled')
+      .then(r => setCatalogEnabled(r?.value !== '0')).catch(() => {})
     adminApi.get<{ value?: string }>('/api/settings/auth_sso_only').then(r => setSsoOnly(r?.value === 'true')).catch(() => {})
     adminApi.get<typeof embed>('/api/settings/embed/config').then(r => { if (r) setEmbed(r) }).catch(() => {})
   }, [])
@@ -377,6 +382,31 @@ function SecurityTab() {
           </div>
         )}
         {embedError && <div style={{ fontSize: '.82rem', color: 'var(--red)' }}>{embedError}</div>}
+      </div>
+
+      <div className="setting-card">
+        <h3>App catalogue</h3>
+        <p>A browsable list of self-hostable applications that any logged-in user can deploy onto this instance.</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <input
+            type="checkbox"
+            id="catalog-enabled"
+            checked={catalogEnabled}
+            onChange={async e => {
+              const next = e.target.checked
+              setCatalogEnabled(next)
+              await adminApi.put('/api/settings/catalog_enabled', { value: next ? '1' : '0' }).catch(() => {})
+              flashCatalogSaved()
+            }}
+          />
+          <label htmlFor="catalog-enabled" style={{ fontSize: '.85rem' }}>Show the app catalogue</label>
+          {catalogSaved && <span style={{ fontSize: '.8rem', color: 'var(--green, #4ade80)' }}>Saved</span>}
+        </div>
+        <p style={{ fontSize: '.84rem', color: 'var(--dim)', margin: 0 }}>
+          Turning this off hides the catalogue from the navigation <em>and</em> refuses its API, so the
+          server stops reaching out to GitHub and Docker Hub for star counts, pull counts and version
+          numbers. Deploying an app by any other route is unaffected.
+        </p>
       </div>
 
       <div className="setting-card">

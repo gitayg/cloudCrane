@@ -408,6 +408,17 @@ export function Layout({ children, subItems, activeSub }: Props) {
   const isOwner = navApps.some(a => a.app_role === 'owner')
   const managesApp = navApps.some(a => a.app_role === 'owner' || a.app_role === 'admin')
   const currentPath = location.pathname
+  // The catalogue can be switched off by a platform admin (Settings -> Security).
+  // Default is ON: only an explicit '0' hides it, so an instance that has never
+  // touched the setting keeps the page. `undefined` means "not answered yet" and
+  // is treated as visible, so the entry does not flicker in on every page load.
+  const [catalogEnabled, setCatalogEnabled] = useState(true)
+  useEffect(() => {
+    adminApi.get<{ value?: string | null }>('/api/settings/catalog_enabled')
+      .then(r => setCatalogEnabled(r?.value !== '0'))
+      .catch(() => setCatalogEnabled(true))
+  }, [])
+
   const activeNav = NAV.find(n => n.href === currentPath)
   const activeNavId = activeNav?.id ?? ''
 
@@ -419,6 +430,7 @@ export function Layout({ children, subItems, activeSub }: Props) {
     if (p.adminOnly && !adminLike) return false
     if (p.ownerOrAdmin && !adminLike && !isOwner) return false
     if (p.id === 'settings' && !adminLike && !isOwner) return false
+    if (p.id === 'catalog' && !catalogEnabled) return false
     // v2.21.5: Manage is for app owners/admins (and it now lists only their
     // apps). Plain users without any owned/admin app don't get a Manage entry.
     if (p.id === 'applications' && !adminLike && !managesApp) return false

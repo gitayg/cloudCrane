@@ -30,6 +30,25 @@ const router = Router();
 router.use(requireAuth);
 
 /**
+ * A platform admin can switch the catalogue off entirely (Settings -> Security).
+ * Hiding the nav entry alone would be cosmetic: the routes would still answer,
+ * and this endpoint reaches out to GitHub and Docker Hub, which is exactly what
+ * an operator turning it off is likely trying to stop. So the gate is here, on
+ * the server, and the nav follows it rather than the other way round.
+ *
+ * DEFAULT IS ON. An absent row means enabled — only an explicit '0' disables,
+ * so an existing instance keeps the catalogue after upgrading without anyone
+ * having to opt in.
+ */
+router.use((req, res, next) => {
+  const row = getDb().prepare("SELECT value FROM settings WHERE key = 'catalog_enabled'").get();
+  if (row && row.value === '0') {
+    return next(new AppError('The app catalogue is disabled on this instance', 404, 'CATALOG_DISABLED'));
+  }
+  next();
+});
+
+/**
  * Apps this caller is allowed to be told exist.
  *
  * SECURITY: this deliberately mirrors GET /api/apps exactly — admins see every

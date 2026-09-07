@@ -196,13 +196,21 @@ test('every discovered key resolves to a defined visibility level', () => {
   }
 });
 
-test('only the two reviewed keys are readable below platform admin', () => {
+test('only the reviewed keys are readable below platform admin', () => {
   // The review gate. Every other key in the universe — and every key a future
   // feature adds — is admin-only by default. Widening one means editing
   // PUBLIC_KEYS/AUTHED_KEYS *and* this list, which is the point: it can't
   // happen by accident the way a forgotten denylist entry did.
+  //
+  // REVIEWED, v2.61.0 — `catalog_enabled`: a single boolean saying whether this
+  // instance shows the app catalogue. Layout.tsx renders the nav for EVERY
+  // logged-in user and must read it to decide whether to draw the entry, so
+  // admin-gating it would hide the catalogue from everyone except platform
+  // admins. It carries no credential, names no host, and reveals only which
+  // pages this instance offers — which the navigation itself reveals anyway.
+  // The WRITE side stays platform-admin-only through PUT /api/settings/:key.
   const widened = [...UNIVERSE].filter(k => settingVisibility(k) !== ADMIN).sort();
-  assert.deepEqual(widened, ['auth_sso_only', 'branding'],
+  assert.deepEqual(widened, ['auth_sso_only', 'branding', 'catalog_enabled'],
     'a settings key became readable below platform admin — justify it or revert it');
 });
 
@@ -218,7 +226,7 @@ test('no key that looks like credential material is readable below platform admi
     `credential-shaped settings keys are readable below platform admin: ${exposed.join(', ')}`);
 });
 
-test('the allowlist sets themselves are exactly the two reviewed keys', () => {
+test('the allowlist sets themselves are exactly the reviewed keys', () => {
   // The two tests above filter UNIVERSE, so they can only judge keys the
   // scanner found. A key added to AUTHED_KEYS that the scanner happens to miss
   // — one reached only through a helper in a file that never names the settings
@@ -233,7 +241,7 @@ test('the allowlist sets themselves are exactly the two reviewed keys', () => {
 
   assert.deepEqual([...publicKeys].sort(), ['auth_sso_only'],
     'PUBLIC_KEYS is unauthenticated read surface — every addition needs its own justification');
-  assert.deepEqual([...authedKeys].sort(), ['branding'],
+  assert.deepEqual([...authedKeys].sort(), ['branding', 'catalog_enabled'],
     'AUTHED_KEYS is readable by any dhk_user_* API key — every addition needs its own justification');
 
   // The parse must agree with the live function, or it is asserting on nothing.

@@ -43,6 +43,12 @@ const PUBLIC_KEYS = new Set([
  */
 const AUTHED_KEYS = new Set([
   'branding',
+  // `catalog_enabled` decides whether the app catalogue appears in the nav.
+  // Every logged-in user renders that nav, so every logged-in user must be able
+  // to read it; the write side stays platform-admin-only via PUT
+  // /api/settings/:key. It leaks one boolean about which pages this instance
+  // offers, which the nav reveals anyway.
+  'catalog_enabled',
 ]);
 
 /**

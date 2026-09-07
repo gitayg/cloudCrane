@@ -574,3 +574,75 @@ test('no second path into app creation was added', () => {
     assert.ok(!route.includes(verb), `catalog.js must expose no ${verb}`);
   }
 });
+
+// ---------------------------------------------------------------------------
+// The platform-admin switch (Settings -> Security -> App catalogue)
+//
+// Hiding the nav entry alone would be cosmetic: the routes would still answer,
+// and this API reaches out to GitHub and Docker Hub — which is plausibly the
+// thing an operator turning it off wants stopped. So the gate is asserted on
+// the server, and asserted for an ADMIN too: this is an instance-level switch,
+// not a permission, so being privileged must not route around it.
+// ---------------------------------------------------------------------------
+
+function setCatalogEnabled(value) {
+  if (value === null) {
+    db.prepare("DELETE FROM settings WHERE key = 'catalog_enabled'").run();
+    return;
+  }
+  db.prepare(
+    "INSERT INTO settings (key,value) VALUES ('catalog_enabled',?) "
+    + 'ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+  ).run(value);
+}
+
+test('the catalogue is ON by default — an absent setting row does not disable it', async () => {
+  setCatalogEnabled(null);
+  const res = await get('/api/catalog', plain.key);
+  assert.equal(res.status, 200,
+    'an instance that has never touched the setting must keep the catalogue after an upgrade');
+});
+
+test('catalog_enabled=0 refuses the API, not just the nav entry', async () => {
+  setCatalogEnabled('0');
+  const res = await get('/api/catalog', plain.key);
+  assert.equal(res.status, 404, 'a disabled catalogue must not answer');
+  assert.equal(res.body?.error?.code, 'CATALOG_DISABLED');
+  setCatalogEnabled(null);
+});
+
+test('a platform admin is refused too — this is a switch, not a permission', async () => {
+  setCatalogEnabled('0');
+  const res = await get('/api/catalog', admin.key);
+  assert.equal(res.status, 404,
+    'privilege must not route around an instance-level switch; an admin who wants it back turns it on');
+  setCatalogEnabled(null);
+});
+
+test('the versions endpoint is gated by the same switch', async () => {
+  // Otherwise the expensive half stays reachable: /versions is the endpoint that
+  // fans out to a registry's tag list.
+  const slug = ANY_ENTRY?.slug;
+  assert.ok(slug, 'manifest has no entry to exercise');
+  setCatalogEnabled('0');
+  const res = await get(`/api/catalog/${slug}/versions`, plain.key);
+  assert.equal(res.status, 404);
+  assert.equal(res.body?.error?.code, 'CATALOG_DISABLED');
+  setCatalogEnabled(null);
+});
+
+test('catalog_enabled=1 turns it back on', async () => {
+  setCatalogEnabled('1');
+  const res = await get('/api/catalog', plain.key);
+  assert.equal(res.status, 200);
+  setCatalogEnabled(null);
+});
+
+test('the flag is readable by an ordinary user, or the nav cannot honour it', async () => {
+  // Layout.tsx fetches GET /api/settings/catalog_enabled to decide whether to
+  // render the entry. settingsVisibility defaults unknown keys to ADMIN, so
+  // forgetting to classify this one would make the nav vanish for everyone
+  // except platform admins.
+  const { settingVisibility, AUTHED } = await import('../server/utils/settingsVisibility.js');
+  assert.equal(settingVisibility('catalog_enabled'), AUTHED);
+});

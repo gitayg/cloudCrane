@@ -1,0 +1,82 @@
+metric: ci_workflow_failure_rate
+baseline: rolling_30d
+rules: western_electric
+
+# Share of completed GitHub Actions runs on gitayg/appCrane that ended in failure,
+# bucketed by UTC day and charted as a p-chart.
+#
+# CORRECTED 2026-09-07. The original rationale here read "there are no tests and
+# no pull requests", which was true of gitayg/aide, the repo this band was first
+# pointed at. It is false of this one: appCrane runs 1235 tests via `npm test` in
+# .github/workflows/role-check.yml. The claim survived the re-point and would
+# have shipped as documentation the repo itself disproves.
+#
+# The metric is still the right choice, for a better reason: CI failure rate is
+# the signal this repo has actually been blind to. It sat red across five
+# consecutive releases with nobody reading it (fixed in v2.58.1), which is
+# precisely the failure a control band catches and a green-looking dashboard
+# does not. Test failure rate would chart a number that is almost always zero;
+# PR cycle time is a possible second band later: 9 PRs exist, but almost all work
+# lands by direct push, so the series would be too sparse to chart.
+#
+# STATE, measured 2026-09-07: COLD_START, not populated. The detector reads 967
+# runs and finds 54 in the 30-day window across 9 distinct days, against a
+# requirement of 10 days / 30 runs — one day short. The earlier note here claimed
+# "POPULATED ... 96 success / 4 failure"; that was measured on 2026-08-26 over the
+# last 100 runs regardless of window, which is not the baseline this detector
+# actually computes. Re-pointed here from gitayg/aide, which has no workflows and
+# would have held the band in permanent COLD_START.
+#
+# COLD_START is reported as DID NOT RUN, never as "within band" — a band with no
+# centreline must not read as a passing check.
+
+source:
+  repo: gitayg/appCrane
+  command: gh run list --repo gitayg/appCrane --limit 1000 --json databaseId,conclusion,status,createdAt,workflowName,headBranch
+  branch_filter: none        # tag-triggered release runs report the tag, not main
+  failure_conclusions: [failure, timed_out, startup_failure]
+  counted_conclusions: [success, failure, timed_out, startup_failure]
+
+detection:
+  script: ops/ci-failure-rate.py
+  command: python3 ops/ci-failure-rate.py
+  output: single JSON object on stdout; diagnostics on stderr
+  exit_codes:
+    0: measured, or cold start — read `state`
+    1: could not measure; `state` is MEASURE_FAILED and `reason` names the blocker
+  states:
+    WITHIN_BAND: no rule fired
+    BREACH_1SIGMA: rule WE3 or WE4 fired
+    BREACH_2SIGMA: rule WE2 fired
+    BREACH_3SIGMA: rule WE1 fired
+    COLD_START: too little history to set a centreline; report DID NOT RUN, never within band
+    MEASURE_FAILED: data source unavailable; report DID NOT RUN
+
+params:
+  window_days: 30            # complete UTC days, ending yesterday
+  series_points: 8           # most recent eligible days; rules read these
+  min_point_runs: 1          # p-chart widens sigma for thin days rather than dropping them
+  min_baseline_days: 10      # eligible days behind the series, else COLD_START
+  min_baseline_runs: 30      # completed runs behind the series, else COLD_START
+  zero_failure_floor: 0.5    # pseudo-failures used when the baseline is all green, so sigma stays defined
+
+# p-chart, high side only. A falling failure rate is not a breach.
+# Every rule requires the most recent point to participate, so a stale
+# excursion cannot re-alarm.
+western_electric:
+  WE1: latest point above centre + 3 sigma
+  WE2: 2 of the last 3 points above centre + 2 sigma
+  WE3: 4 of the last 5 points above centre + 1 sigma
+  WE4: last 8 points all above centre
+
+tiers:
+  1sigma:
+    action: log
+  2sigma:
+    action: diagnose
+    tools: "Read,Grep,Glob,Bash(gh run list *),Bash(gh run view *),Bash(git log *),Bash(git show *)"
+  3sigma:
+    action: propose
+    routes: [pull_request]
+    # No pre-approved runbook exists for this repo. Releases are manual DMG
+    # uploads, so there is no rollback pipeline to name. Stop at the PR.

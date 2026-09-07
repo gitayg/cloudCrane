@@ -225,6 +225,35 @@ export function Catalog() {
 
   useEffect(() => { load() }, [load])
 
+  // GET /api/catalog kicks off the enrichment fetch and returns IMMEDIATELY —
+  // the figures land a couple of seconds later, in the server's cache, with
+  // nothing to tell this page. Without this poll the first visit always renders
+  // empty and blames GitHub and Docker Hub for being unreachable when the fetch
+  // is in flight and about to succeed; the only cure was for the user to guess
+  // and hit Reload.
+  //
+  // Poll only while a refresh is actually running, and give up after a bounded
+  // number of attempts so a permanently degraded upstream cannot leave a tab
+  // requesting forever.
+  const POLL_MS = 2000
+  const POLL_MAX = 15
+  useEffect(() => {
+    if (!status?.refreshing) return
+    let attempts = 0
+    let cancelled = false
+    const id = setInterval(async () => {
+      if (cancelled || ++attempts > POLL_MAX) { clearInterval(id); return }
+      try {
+        const r = await adminApi.get<CatalogResponse>('/api/catalog')
+        if (cancelled) return
+        if (Array.isArray(r?.catalog)) setEntries(r.catalog)
+        setStatus(r?.enrichment ?? null)
+        if (!r?.enrichment?.refreshing) clearInterval(id)
+      } catch { /* a failed poll is not worth surfacing; the banner already says what is known */ }
+    }, POLL_MS)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [status?.refreshing])
+
   // Categories come from the payload, but an entry carrying a category the
   // server did not list still has to be filterable.
   const allCategories = useMemo(() => {
@@ -358,7 +387,9 @@ export function Catalog() {
 
       {status && (
         <div style={{ fontSize: '.75rem', color: 'var(--dim)', margin: '-4px 0 10px' }}>
-          {status.degraded
+          {status.refreshing && !status.fetched_at
+            ? 'Fetching live figures…'
+            : status.degraded
             ? 'No live figures cached yet — GitHub and Docker Hub are unreachable or rate-limiting. Names, descriptions and deploy paths still work.'
             : status.fetched_at
               ? `Live figures cached ${new Date(status.fetched_at).toLocaleString()}${status.refreshing ? ' · refreshing in the background' : status.stale ? ' · stale, refresh queued' : ''}`
@@ -410,7 +441,6 @@ export function Catalog() {
         </table>
       </div>
 
-      <CatalogFooter />
 
       {installEntry && (
         <InstallDialog
@@ -455,7 +485,24 @@ function CatalogRow({ entry, expanded, onToggle, canCreate, onInstall, onOpen }:
           >{expanded ? '▾' : '▸'}</button>
         </td>
         <td>
-          <div style={{ fontWeight: 600 }}>{entry.name}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* The project's GitHub owner avatar, derived from `repo` — no extra
+                data to curate and no per-entry logo URL to rot. It is fetched by
+                the VIEWER's browser from github.com; if that outbound call is
+                unwanted on a locked-down deployment, drop this img and the row
+                still reads fine. A 404 (rare, but orgs get renamed) hides the
+                element rather than showing a broken-image glyph. */}
+            <img
+              src={`https://github.com/${(entry.repo || '').split('/')[0]}.png?size=48`}
+              alt=""
+              width={22}
+              height={22}
+              loading="lazy"
+              onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+              style={{ borderRadius: 4, flex: 'none', background: 'var(--surface)' }}
+            />
+            <span style={{ fontWeight: 600 }}>{entry.name}</span>
+          </div>
           <div style={{ fontSize: '.7rem', color: 'var(--dim)', fontFamily: 'monospace' }}>{entry.repo || '—'}</div>
         </td>
         <td style={{ color: 'var(--dim)' }}>{entry.short || <span title="No description in the manifest">—</span>}</td>
@@ -500,8 +547,19 @@ function CatalogRow({ entry, expanded, onToggle, canCreate, onInstall, onOpen }:
       </tr>
       {expanded && (
         <tr className="apps-row-drill">
-          <td colSpan={8}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, fontSize: '.8rem' }}>
+          {/* The table is wider than the viewport and .apps-table-wrap scrolls
+              horizontally, so a colSpan={8} cell is as wide as the TABLE, not the
+              screen — its right-hand content ends up off-screen. `position: sticky;
+              left: 0` pins the panel to the visible left edge while the table
+              scrolls under it, and the width cap stops it stretching to the full
+              table width. */}
+          <td colSpan={8} style={{ padding: 0 }}>
+            <div style={{
+              position: 'sticky', left: 0,
+              width: 'min(100%, 1040px)',
+              padding: '10px 8px 14px',
+              display: 'flex', flexWrap: 'wrap', gap: 24, fontSize: '.8rem',
+            }}>
               <div style={{ minWidth: 220, flex: '1 1 260px' }}>
                 <div className="apps-drill-env-hdr">Project</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -1065,29 +1123,4 @@ function InstallDialog({ entry, onClose, onCreated }: {
 }
 
 // ---------------------------------------------------------------------------
-// Footer — every sentence here has to stay true
-// ---------------------------------------------------------------------------
 
-function CatalogFooter() {
-  return (
-    <div style={{ marginTop: 20, paddingTop: 14, borderTop: '1px solid var(--border)', fontSize: '.78rem', color: 'var(--dim)', lineHeight: 1.6, maxWidth: 860 }}>
-      <p style={{ margin: '0 0 8px' }}>
-        <strong style={{ color: 'var(--text)' }}>Nothing here is bundled.</strong> The repository ships a small
-        JSON manifest and no image content at all. An app deployed from the image path is pulled by{' '}
-        <em>this AppCrane host, at deploy time</em>, with <code style={{ fontFamily: 'monospace' }}>docker pull</code>;
-        an app deployed from GitHub is cloned and built here. Browsing this page downloads no images and caches
-        no layers — only metadata is fetched, and only to show the figures below.
-      </p>
-      <p style={{ margin: '0 0 8px' }}>
-        <strong style={{ color: 'var(--text)' }}>Pull counts are an order of magnitude, not an install count.</strong>{' '}
-        A pull is counted whenever a layer is fetched — CI runs, cache misses and re-pulls of the same image on
-        the same machine all add to it. Read the number as scale, never as "this many people run it".
-      </p>
-      <p style={{ margin: 0 }}>
-        <strong style={{ color: 'var(--text)' }}>"NOASSERTION" is not a licence.</strong> It means GitHub could not
-        match the project's licence file to a standard one — the terms may be fine, unusual, or restrictive. Read
-        the repository yourself before relying on that project commercially.
-      </p>
-    </div>
-  )
-}
