@@ -54,6 +54,7 @@ interface CatalogEntry {
   home?: string
   license?: string
   short?: string
+  needs?: NeedsField            // absent = the app runs standalone
   enrichment?: Enrichment | null
   installed?: InstalledRef[]
   is_installed?: boolean
@@ -181,9 +182,133 @@ function imageUrl(image: string | null | undefined): string | null {
   return 'https://hub.docker.com/r/' + parts[0] + '/' + parts[1]
 }
 
+// ---------------------------------------------------------------------------
+// The database requirement
+//
+// A large minority of the catalogued images cannot start without an external
+// database — linuxserver/bookstack's own documentation says the application is
+// dependent on a MariaDB database — and this dialog used to say nothing about
+// it at all. The first sign was a blank page after a deploy that reported
+// success. The manifest now carries the requirement in `needs`, and the dialog
+// states it BEFORE the Deploy button rather than leaving it to be discovered.
+//
+// `needs` is read defensively, because it is hand-written into the manifest and
+// this page must not blow up on a shape it did not expect. A bare engine name,
+// an object that also names the environment variables the image reads, and a
+// list of several are all accepted; anything unrecognisable is treated as the
+// common case, which is that the entry needs nothing.
+// ---------------------------------------------------------------------------
+
+interface CatalogNeed {
+  engine?: string
+  /** Which env var each connection field is read from, e.g. { name: 'DB_DATABASE' }. */
+  env?: Record<string, string> | null
+  note?: string
+}
+
+type NeedsField = string | CatalogNeed | Array<string | CatalogNeed> | null
+
+type DbField = 'host' | 'port' | 'name' | 'user' | 'password'
+type DbEnvNames = Record<DbField, string>
+
+type DbEngine = 'postgres' | 'mariadb'
+
+interface DbRequirement {
+  /** What AppCrane would provision. null = the manifest named something else. */
+  engine: DbEngine | null
+  /** What the MANIFEST asked for, which is not always what gets provisioned. */
+  label: string
+  /** What AppCrane's shared server actually is. '' when engine is null. */
+  engineLabel: string
+  defaultPort: number | null
+  env: DbEnvNames
+  /** Further services the entry asks for that are not the primary database. */
+  extras: string[]
+  note?: string
+}
+
+// One shared PostgreSQL server and one shared MariaDB server serve the whole
+// platform. These are the two tokens POST /api/apps/:slug/database accepts
+// (routes/managedDb.js ENGINES), so 'mysql' in the manifest canonicalises to
+// 'mariadb' — MariaDB is the MySQL-compatible server this platform runs, and
+// the dialog says so rather than quietly substituting one for the other.
+function canonicalEngine(raw: string): DbEngine | null {
+  const s = raw.trim().toLowerCase()
+  if (s === 'postgres' || s === 'postgresql' || s === 'pgsql' || s === 'pg') return 'postgres'
+  if (s === 'mysql' || s === 'mariadb' || s === 'maria') return 'mariadb'
+  return null
+}
+
+/** The manifest's own word for the engine, in the spelling a human uses. */
+function prettyEngine(raw: string): string {
+  const s = raw.trim().toLowerCase()
+  if (s === 'postgres' || s === 'postgresql' || s === 'pgsql' || s === 'pg') return 'PostgreSQL'
+  if (s === 'mysql') return 'MySQL'
+  if (s === 'mariadb' || s === 'maria') return 'MariaDB'
+  return raw.trim()
+}
+
+const ENGINE_LABEL: Record<DbEngine, string> = { postgres: 'PostgreSQL', mariadb: 'MariaDB' }
+const ENGINE_PORT: Record<DbEngine, number> = { postgres: 5432, mariadb: 3306 }
+
+const DEFAULT_DB_ENV: DbEnvNames = {
+  host: 'DB_HOST', port: 'DB_PORT', name: 'DB_NAME', user: 'DB_USER', password: 'DB_PASSWORD',
+}
+
+// PUT /api/apps/:slug/env/:env rejects a key that is not an identifier, so a
+// name the manifest got wrong is dropped for the built-in one here rather than
+// turned into a 400 the user cannot act on.
+const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
+
+function mergeEnvNames(custom: Record<string, string> | null | undefined): DbEnvNames {
+  const out: DbEnvNames = { ...DEFAULT_DB_ENV }
+  for (const k of Object.keys(out) as DbField[]) {
+    const v = custom?.[k]
+    if (typeof v === 'string' && ENV_KEY_RE.test(v.trim())) out[k] = v.trim()
+  }
+  return out
+}
+
+/** The manifest's `needs`, in the shape the dialog renders. Null = standalone. */
+function normalizeNeeds(raw: unknown): DbRequirement | null {
+  const list: unknown[] = Array.isArray(raw) ? raw : raw === null || raw === undefined ? [] : [raw]
+  const items: CatalogNeed[] = []
+  for (const v of list) {
+    if (typeof v === 'string') items.push({ engine: v })
+    else if (v && typeof v === 'object') items.push(v as CatalogNeed)
+  }
+  const named = items.filter(i => typeof i.engine === 'string' && i.engine.trim() !== '')
+  if (named.length === 0) return null
+
+  // The first requirement this platform can actually provision leads the
+  // dialog. Anything else is still reported — silently dropping a dependency is
+  // how the blank page happened in the first place.
+  const found = named.findIndex(i => canonicalEngine(i.engine as string) !== null)
+  const idx = found === -1 ? 0 : found
+  const primary = named[idx]
+  const engine = canonicalEngine(primary.engine as string)
+
+  return {
+    engine,
+    label: prettyEngine(primary.engine as string),
+    engineLabel: engine ? ENGINE_LABEL[engine] : '',
+    defaultPort: engine ? ENGINE_PORT[engine] : null,
+    env: mergeEnvNames(primary.env),
+    extras: named.filter((_, i) => i !== idx).map(i => prettyEngine(i.engine as string)),
+    note: typeof primary.note === 'string' && primary.note.trim() ? primary.note.trim() : undefined,
+  }
+}
+
 /** A slug POST /api/apps will accept: ^[a-z0-9][a-z0-9-]*$ */
 function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/-+/g, '-').replace(/^-+/, '').slice(0, 60)
+}
+
+/** 'bookstack' -> 'bookstack-2', 'bookstack-2' -> 'bookstack-3'. */
+function nextSlug(s: string): string {
+  const m = /^(.*[^-])-(\d+)$/.exec(s)
+  const next = m ? `${m[1]}-${Number(m[2]) + 1}` : `${s}-2`
+  return next.slice(0, 60)
 }
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/
@@ -709,6 +834,7 @@ function VersionCell({ entry }: { entry: CatalogEntry }) {
 
 type SourceChoice = 'github' | 'image'
 type RoutingChoice = 'appcrane' | 'domain'
+type DbChoice = 'provision' | 'external'
 
 function InstallDialog({ entry, onClose, onCreated }: {
   entry: CatalogEntry
@@ -720,6 +846,9 @@ function InstallDialog({ entry, onClose, onCreated }: {
   // than rendered as a button that cannot work.
   const hasImage = typeof entry.image === 'string' && entry.image.trim().length > 0
   const base = hasImage ? imageBase((entry.image as string).trim()) : ''
+
+  const need = useMemo(() => normalizeNeeds(entry.needs), [entry.needs])
+  const canProvision = need?.engine != null
 
   const [source, setSource] = useState<SourceChoice>(hasImage ? 'image' : 'github')
   const [name, setName] = useState(entry.name)
@@ -734,15 +863,30 @@ function InstallDialog({ entry, onClose, onCreated }: {
   const [healthPath, setHealthPath] = useState('')
   const [ack, setAck] = useState(false)
 
+  // "Provision one for me" is the default because it is the option that cannot
+  // be got wrong. An engine the platform does not run leaves only the other.
+  const [dbMode, setDbMode] = useState<DbChoice>(canProvision ? 'provision' : 'external')
+  const [dbHost, setDbHost] = useState('')
+  const [dbPort, setDbPort] = useState('')
+  const [dbName, setDbName] = useState('')
+  const [dbUser, setDbUser] = useState('')
+  // Held only for the length of this dialog and sent only to the env var
+  // route, which encrypts it. It is never put in a title, a log or an error.
+  const [dbPassword, setDbPassword] = useState('')
+
   const [versions, setVersions] = useState<VersionsResponse | null>(null)
   const [versionsError, setVersionsError] = useState<string | null>(null)
   const [versionsLoading, setVersionsLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // A duplicate slug is not a generic error and is not rendered as one — see
+  // the 409 branch in submit().
+  const [takenSlug, setTakenSlug] = useState<string | null>(null)
   const [warning, setWarning] = useState<string | null>(null)
-  const [done, setDone] = useState<{ slug: string; name: string; deploying: boolean } | null>(null)
+  const [done, setDone] = useState<{ slug: string; name: string; deploying: boolean; injectedEnv: string[] } | null>(null)
 
   const navigate = useNavigate()
+  const { addTab } = useAppTabs()
   const dialogRef = useRef<HTMLDivElement>(null)
   const firstRef = useRef<HTMLButtonElement>(null)
 
@@ -790,10 +934,20 @@ function InstallDialog({ entry, onClose, onCreated }: {
   const portOk = !containerPort.trim() || /^[0-9]{1,5}$/.test(containerPort.trim())
   const healthOk = !healthPath.trim() || healthPath.trim().startsWith('/')
 
+  const dbPortNum = Number(dbPort.trim())
+  const dbPortOk = !dbPort.trim() || (/^[0-9]{1,5}$/.test(dbPort.trim()) && dbPortNum >= 1 && dbPortNum <= 65535)
+  const externalDbIncomplete = !dbHost.trim() || !dbName.trim() || !dbUser.trim() || !dbPassword
+
   const blockers: string[] = []
   if (!name.trim()) blockers.push('a name')
   if (!slugOk) blockers.push('a slug of lowercase letters, digits and dashes')
   if (!branchOk) blockers.push('a git ref of letters, digits and . _ / -')
+  // The database is a blocker on the same list as everything else rather than
+  // a second gate of its own: one place decides whether Deploy is allowed.
+  if (need && dbMode === 'external' && externalDbIncomplete) {
+    blockers.push(`the host, database name, user and password of the ${need.label} you already run`)
+  }
+  if (need && dbMode === 'external' && !dbPortOk) blockers.push('a database port between 1 and 65535')
   if (source === 'image' && !effectiveTag) blockers.push('an image tag (":latest" is refused — see below)')
   if (source === 'github' && !repoUrl(entry.repo)) blockers.push('a resolvable GitHub repository in the manifest')
   if (routing === 'domain' && !domain.trim()) blockers.push('the custom domain')
@@ -804,6 +958,7 @@ function InstallDialog({ entry, onClose, onCreated }: {
   async function submit() {
     setSubmitting(true)
     setError(null)
+    setTakenSlug(null)
     setWarning(null)
     const body: Record<string, unknown> = { name: name.trim(), slug }
     if (source === 'github') {
@@ -818,10 +973,42 @@ function InstallDialog({ entry, onClose, onCreated }: {
     }
     if (routing === 'domain' && domain.trim()) body.domain = domain.trim()
 
+    // POST /api/apps answers 409 when the slug is taken, and that is a different
+    // thing from a failure — nothing was created, and the fix is a keystroke.
+    // adminApi.post() flattens every non-ok status to its message string, so the
+    // status is read here directly to tell the two apart.
+    let res: Response
     try {
-      await adminApi.post('/api/apps', body)
+      res = await fetch('/api/apps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...adminApi.authHeaders() },
+        body: JSON.stringify(body),
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
+      setSubmitting(false)
+      return
+    }
+
+    if (res.status === 409) {
+      setTakenSlug(slug)
+      setSubmitting(false)
+      return
+    }
+    if (res.status === 401) {
+      // Hand a 401 back to adminApi, which owns the decision about whether the
+      // stored credential is proven bad and the session should be cleared.
+      // Re-issuing is safe: a 401 comes from the auth middleware, before the
+      // route body runs, so the request above created nothing to duplicate.
+      try { await adminApi.post('/api/apps', body) }
+      catch (err) { setError(err instanceof Error ? err.message : String(err)) }
+      setSubmitting(false)
+      return
+    }
+    if (!res.ok) {
+      const payload = await res.json().catch(() => ({}))
+      const msg = (payload as { error?: { message?: string } })?.error?.message
+      setError(msg || `HTTP ${res.status}`)
       setSubmitting(false)
       return
     }
@@ -843,6 +1030,69 @@ function InstallDialog({ entry, onClose, onCreated }: {
         )
       }
     }
+    // Provisioning is asked for by NAMING THE ENGINE, not by naming the app or
+    // the database: POST /api/apps/:slug/database derives both from a scope
+    // record on the server, so the same call works unchanged when that scope
+    // grows a tenant dimension. The generated password is deliberately not in
+    // the response — it is stored encrypted and injected into the container's
+    // environment at deploy time — so there is nothing here for this page to
+    // hold, display or leak.
+    //
+    // It runs BEFORE the deploy, and a failure stops the deploy, for the same
+    // reason as the external path below: a container that starts without its
+    // database is exactly the blank page this dialog exists to prevent.
+    let injectedEnv: string[] = []
+    if (need && dbMode === 'provision' && need.engine) {
+      try {
+        const r = await adminApi.post<{ injected_env?: string[] }>(
+          '/api/apps/' + slug + '/database', { engine: need.engine },
+        )
+        injectedEnv = Array.isArray(r?.injected_env) ? r.injected_env : []
+      } catch (err) {
+        setWarning(
+          'The app was created, but provisioning its ' + need.engineLabel + ' database failed: ' +
+          (err instanceof Error ? err.message : String(err)) +
+          '. The first deploy was NOT started, because ' + entry.name + ' cannot serve a page without a ' +
+          'database. Retry from Manage, or deploy it against a database you run yourself.',
+        )
+        setDone({ slug, name: name.trim(), deploying: false, injectedEnv: [] })
+        setSubmitting(false)
+        return
+      }
+    }
+
+    // A database the operator already runs is wired in as environment variables,
+    // through the route that encrypts them at rest, BEFORE the first deploy —
+    // a container started without them is the blank page this whole change
+    // exists to stop. So if the write fails the deploy is not attempted: an app
+    // that has not started yet is a far better state to hand back than one that
+    // has started and cannot serve a page.
+    if (need && dbMode === 'external') {
+      const port = dbPort.trim() || (need.defaultPort ? String(need.defaultPort) : '')
+      const vars: Record<string, string> = {
+        [need.env.host]: dbHost.trim(),
+        [need.env.name]: dbName.trim(),
+        [need.env.user]: dbUser.trim(),
+        [need.env.password]: dbPassword,
+      }
+      // An empty port variable is worse than an absent one: a client library
+      // that would have used its own default reads '' and fails to parse it.
+      if (port) vars[need.env.port] = port
+      try {
+        await adminApi.put('/api/apps/' + slug + '/env/production', { vars })
+      } catch (err) {
+        setWarning(
+          'The app was created, but writing its database connection into the environment failed: ' +
+          (err instanceof Error ? err.message : String(err)) +
+          '. The first deploy was NOT started, because ' + entry.name + ' cannot serve a page without a ' +
+          'database. Set the variables under Manage → Environment, then deploy from there.',
+        )
+        setDone({ slug, name: name.trim(), deploying: false, injectedEnv })
+        setSubmitting(false)
+        return
+      }
+    }
+
     // Creating the app row only registers it — nothing is built or pulled until
     // a deploy runs, and an undeployed app answers "Not deployed" at its URL.
     // The catalogue promises two clicks, so the deploy is part of the second one.
@@ -859,7 +1109,7 @@ function InstallDialog({ entry, onClose, onCreated }: {
         '. Open it under Manage and deploy from there.',
       )
     }
-    setDone({ slug, name: name.trim(), deploying })
+    setDone({ slug, name: name.trim(), deploying, injectedEnv })
     setSubmitting(false)
   }
 
@@ -899,6 +1149,13 @@ function InstallDialog({ entry, onClose, onCreated }: {
                       : 'This host is cloning and building the repo, which can take a few minutes.'} The URL answers
                       "Not deployed" until it finishes — watch progress under Manage.</>
                   : <> The deploy did not start; open it under Manage and run the first deploy there.</>}
+                {done.injectedEnv.length > 0 && (
+                  <div style={{ marginTop: 8 }}>
+                    Its database is provisioned. The deploy injects the connection as{' '}
+                    <code style={{ fontFamily: 'monospace' }}>{done.injectedEnv.join(', ')}</code> — the password
+                    stays on the server, encrypted.
+                  </div>
+                )}
               </div>
               {warning && (
                 <div role="alert" style={{ border: '1px solid rgba(249,115,22,.4)', background: 'rgba(249,115,22,.08)', borderRadius: 6, padding: 12, lineHeight: 1.5 }}>
@@ -916,6 +1173,133 @@ function InstallDialog({ entry, onClose, onCreated }: {
                 {entry.short}
                 {entry.license ? <> · Licence <code style={{ fontFamily: 'monospace' }}>{entry.license}</code></> : null}
               </p>
+
+              {/* Database. First, because it decides whether the deploy can work
+                  at all, and because the whole point is that it is read before
+                  the Deploy button rather than discovered after it. */}
+              {need ? (
+                <fieldset style={{ border: '1px solid var(--border)', borderRadius: 6, padding: 12, margin: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <legend style={label}>Database</legend>
+
+                  <div style={{ lineHeight: 1.5 }}>
+                    <strong>{entry.name} needs a {need.label} database.</strong> It does not ship one, and it
+                    will not serve a page without one — a deploy with no database reachable comes up blank or
+                    answers 503, having reported success.
+                    {need.note ? <> {need.note}</> : null}
+                  </div>
+
+                  {need.extras.length > 0 && (
+                    <div style={{ color: 'var(--orange)', fontSize: '.78rem', lineHeight: 1.5 }}>
+                      It also expects {need.extras.join(', ')}, which AppCrane does not provision. Supply it
+                      yourself under Manage → Environment, or the app will still be short of a dependency.
+                    </div>
+                  )}
+
+                  <div role="radiogroup" aria-label="Where this app's database comes from" style={{ display: 'flex', gap: 0, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                    {([
+                      ['provision', 'Provision one for me', canProvision],
+                      ['external', 'Use a database I already run', true],
+                    ] as const).map(([val, text, enabled]) => (
+                      <button
+                        key={val}
+                        type="button"
+                        role="radio"
+                        aria-checked={dbMode === val}
+                        disabled={!enabled}
+                        onClick={() => enabled && setDbMode(val as DbChoice)}
+                        title={!enabled
+                          ? `AppCrane provisions PostgreSQL and MariaDB only, and this app asks for ${need.label} — so it has to be one you already run.`
+                          : undefined}
+                        style={{
+                          flex: 1, padding: '9px 12px', border: 0, cursor: enabled ? 'pointer' : 'not-allowed',
+                          fontSize: '.85rem', fontWeight: 600,
+                          background: dbMode === val ? 'var(--accent)' : 'transparent',
+                          color: dbMode === val ? '#fff' : enabled ? 'var(--text)' : 'var(--dim)',
+                          opacity: enabled ? 1 : .55,
+                        }}
+                      >{text}</button>
+                    ))}
+                  </div>
+
+                  {dbMode === 'provision' ? (
+                    <div style={{ fontSize: '.78rem', color: 'var(--dim)', lineHeight: 1.5 }}>
+                      AppCrane creates a database and its own user for this app on the shared{' '}
+                      {need.engineLabel} server, and the deploy injects the connection into the container's
+                      environment.
+                      {need.engineLabel !== need.label && (
+                        <> {need.label} and {need.engineLabel} speak the same protocol, and {need.engineLabel} is
+                          the server this platform runs.</>
+                      )}{' '}
+                      The password is generated on the server, stored encrypted and never returned to this page,
+                      so there is nothing here to copy or leak. That user can reach this app's database and no
+                      other on that server.
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: '.78rem', color: 'var(--dim)', lineHeight: 1.5 }}>
+                        These go in as this app's production environment variables —{' '}
+                        <code style={{ fontFamily: 'monospace' }}>{Object.values(need.env).join(', ')}</code> —
+                        encrypted at rest, and are written before the first deploy runs. The database must be
+                        reachable from this host, and AppCrane neither creates it nor migrates it.
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+                        <div style={field}>
+                          <label style={label} htmlFor="cat-db-host">Host</label>
+                          <input
+                            id="cat-db-host" type="text" value={dbHost}
+                            onChange={e => setDbHost(e.target.value)} placeholder="db.internal"
+                            autoComplete="off"
+                          />
+                        </div>
+                        <div style={field}>
+                          <label style={label} htmlFor="cat-db-port">Port (optional)</label>
+                          <input
+                            id="cat-db-port" type="text" inputMode="numeric" value={dbPort}
+                            onChange={e => setDbPort(e.target.value)}
+                            placeholder={need.defaultPort ? String(need.defaultPort) : 'port'}
+                            aria-invalid={!dbPortOk}
+                            autoComplete="off"
+                          />
+                          <span style={{ fontSize: '.72rem', color: dbPortOk ? 'var(--dim)' : 'var(--red)' }}>
+                            {dbPortOk
+                              ? (need.defaultPort ? `Blank means ${need.defaultPort}.` : 'Blank sends no port.')
+                              : 'Must be a number between 1 and 65535.'}
+                          </span>
+                        </div>
+                        <div style={field}>
+                          <label style={label} htmlFor="cat-db-name">Database name</label>
+                          <input
+                            id="cat-db-name" type="text" value={dbName}
+                            onChange={e => setDbName(e.target.value)} placeholder={slug || 'appdb'}
+                            autoComplete="off"
+                          />
+                        </div>
+                        <div style={field}>
+                          <label style={label} htmlFor="cat-db-user">User</label>
+                          <input
+                            id="cat-db-user" type="text" value={dbUser}
+                            onChange={e => setDbUser(e.target.value)}
+                            autoComplete="off"
+                          />
+                        </div>
+                        <div style={field}>
+                          <label style={label} htmlFor="cat-db-pass">Password</label>
+                          <input
+                            id="cat-db-pass" type="password" value={dbPassword}
+                            onChange={e => setDbPassword(e.target.value)}
+                            autoComplete="new-password"
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </fieldset>
+              ) : (
+                <div style={{ fontSize: '.78rem', color: 'var(--dim)', lineHeight: 1.5 }}>
+                  This app runs standalone — it needs no external database, so there is nothing to provision or
+                  connect before deploying.
+                </div>
+              )}
 
               {/* Source */}
               <fieldset style={{ border: '1px solid var(--border)', borderRadius: 6, padding: 12, margin: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -994,7 +1378,7 @@ function InstallDialog({ entry, onClose, onCreated }: {
                     id="cat-slug"
                     type="text"
                     value={slug}
-                    onChange={e => setSlug(e.target.value)}
+                    onChange={e => { setSlug(e.target.value); setTakenSlug(null) }}
                     aria-invalid={!slugOk}
                     aria-describedby="cat-slug-help"
                   />
@@ -1174,6 +1558,35 @@ function InstallDialog({ entry, onClose, onCreated }: {
                 )}
               </fieldset>
 
+              {/* A 409 used to arrive here as "App slug 'bookstack' already
+                  exists", which reads to someone re-installing an app as though
+                  the button did nothing. It is not a failure: nothing was
+                  created, the slug is simply the one identifier on this instance
+                  that has to be unique, and both ways out are one click. */}
+              {takenSlug && (
+                <div
+                  role="alert"
+                  style={{ border: '1px solid rgba(249,115,22,.4)', background: 'rgba(249,115,22,.08)', borderRadius: 6, padding: 12, lineHeight: 1.5 }}
+                >
+                  <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                    The slug <code style={{ fontFamily: 'monospace' }}>{takenSlug}</code> is already taken.
+                  </div>
+                  An app is registered under it on this instance, and every app needs its own slug because it is
+                  the path it is served at. Nothing was created just now, and nothing was changed. Either open
+                  the app that holds the slug, or deploy this one under a different name.
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                    <button
+                      className="btn btn-xs"
+                      onClick={() => { addTab({ slug: takenSlug, name: takenSlug }); navigate('/launch/' + takenSlug) }}
+                    >Open /{takenSlug}/</button>
+                    <button
+                      className="btn btn-xs btn-accent"
+                      onClick={() => { setSlug(nextSlug(takenSlug)); setTakenSlug(null) }}
+                    >Use {nextSlug(takenSlug)} instead</button>
+                  </div>
+                </div>
+              )}
+
               {error && (
                 <div role="alert" style={{ border: '1px solid rgba(239,68,68,.35)', background: 'rgba(239,68,68,.08)', borderRadius: 6, padding: 10 }}>
                   {error}
@@ -1186,7 +1599,13 @@ function InstallDialog({ entry, onClose, onCreated }: {
         {!done && (
           <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', background: 'var(--surface2)', display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: '.75rem', color: 'var(--dim)' }}>
-              {blockers.length > 0 ? `Still needs ${blockers[0]}.` : 'Creates the app and starts its first deploy. Pulling the image can take a few minutes.'}
+              {blockers.length > 0
+                ? `Still needs ${blockers[0]}.`
+                : need && dbMode === 'provision'
+                  ? `Creates the app, provisions its ${need.engineLabel} database, and starts the first deploy.`
+                  : need
+                    ? 'Creates the app, writes the database connection into its environment, and starts the first deploy.'
+                    : 'Creates the app and starts its first deploy. Pulling the image can take a few minutes.'}
             </span>
             <button className="btn btn-sm" style={{ marginLeft: 'auto' }} onClick={onClose}>Cancel</button>
             <button

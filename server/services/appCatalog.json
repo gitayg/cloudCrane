@@ -7,7 +7,20 @@
     "image": "akaunting/akaunting",
     "home": "https://akaunting.com",
     "license": "NOASSERTION",
-    "short": "Small-business accounting and invoicing"
+    "short": "Small-business accounting and invoicing",
+    "needs": {
+      "engine": "mariadb",
+      "required": true,
+      "env": {
+        "host": "DB_HOST",
+        "port": "DB_PORT",
+        "name": "DB_NAME",
+        "user": "DB_USERNAME",
+        "password": "DB_PASSWORD"
+      },
+      "url_env": null,
+      "note": "Note DB_NAME, not the Laravel DB_DATABASE spelling. DB_PREFIX is also read and upstream advises setting it."
+    }
   },
   {
     "name": "Crater",
@@ -17,7 +30,20 @@
     "image": null,
     "home": "https://craterapp.com",
     "license": "AGPL-3.0",
-    "short": "Simple invoicing for freelancers"
+    "short": "Simple invoicing for freelancers",
+    "needs": {
+      "engine": "mariadb",
+      "required": true,
+      "env": {
+        "host": "DB_HOST",
+        "port": "DB_PORT",
+        "name": "DB_DATABASE",
+        "user": "DB_USERNAME",
+        "password": "DB_PASSWORD"
+      },
+      "url_env": null,
+      "note": "Taken from the project's .env.example; this entry has no first-party image, so the names apply to a source build."
+    }
   },
   {
     "name": "Invoice Ninja",
@@ -27,7 +53,20 @@
     "image": "invoiceninja/invoiceninja",
     "home": "https://invoiceninja.com",
     "license": "NOASSERTION",
-    "short": "Invoicing, quotes and payment collection"
+    "short": "Invoicing, quotes and payment collection",
+    "needs": {
+      "engine": "mariadb",
+      "required": true,
+      "env": {
+        "host": "DB_HOST",
+        "port": "DB_PORT",
+        "name": "DB_DATABASE",
+        "user": "DB_USERNAME",
+        "password": "DB_PASSWORD"
+      },
+      "url_env": null,
+      "note": "DB_CONNECTION should be mysql."
+    }
   },
   {
     "name": "Lightdash",
@@ -37,7 +76,19 @@
     "image": "lightdash/lightdash",
     "home": "https://lightdash.com",
     "license": "NOASSERTION",
-    "short": "BI layered directly on your dbt models"
+    "short": "BI layered directly on your dbt models",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": {
+        "host": "PGHOST",
+        "port": "PGPORT",
+        "name": "PGDATABASE",
+        "user": "PGUSER",
+        "password": "PGPASSWORD"
+      },
+      "url_env": null
+    }
   },
   {
     "name": "Metabase",
@@ -47,7 +98,20 @@
     "image": "metabase/metabase",
     "home": "https://metabase.com",
     "license": "NOASSERTION",
-    "short": "Ask questions of your data without SQL"
+    "short": "Ask questions of your data without SQL",
+    "needs": {
+      "engine": "postgres",
+      "required": false,
+      "env": {
+        "host": "MB_DB_HOST",
+        "port": "MB_DB_PORT",
+        "name": "MB_DB_DBNAME",
+        "user": "MB_DB_USER",
+        "password": "MB_DB_PASS"
+      },
+      "url_env": "MB_DB_CONNECTION_URI",
+      "note": "This is Metabase's APPLICATION database. Unset, Metabase creates an embedded H2 file that upstream says must not be used in production. MB_DB_TYPE must be set to postgres."
+    }
   },
   {
     "name": "Redash",
@@ -57,7 +121,13 @@
     "image": "redash/redash",
     "home": "http://redash.io/",
     "license": "BSD-2-Clause",
-    "short": "Query many data sources and chart the results"
+    "short": "Query many data sources and chart the results",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": null,
+      "url_env": "REDASH_DATABASE_URL"
+    }
   },
   {
     "name": "Superset",
@@ -67,7 +137,20 @@
     "image": "apache/superset",
     "home": "https://superset.apache.org/",
     "license": "Apache-2.0",
-    "short": "Dashboards and exploration at data-warehouse scale"
+    "short": "Dashboards and exploration at data-warehouse scale",
+    "needs": {
+      "engine": "postgres",
+      "required": false,
+      "env": {
+        "host": "DATABASE_HOST",
+        "port": "DATABASE_PORT",
+        "name": "DATABASE_DB",
+        "user": "DATABASE_USER",
+        "password": "DATABASE_PASSWORD"
+      },
+      "url_env": null,
+      "note": "This is Superset's METADATA database, not a data source. Without it the image falls back to SQLite, which upstream does not support for production. DATABASE_DIALECT selects the engine."
+    }
   },
   {
     "name": "EspoCRM",
@@ -77,7 +160,20 @@
     "image": "espocrm/espocrm",
     "home": "https://www.espocrm.com",
     "license": "AGPL-3.0",
-    "short": "Lightweight PHP CRM, easy to self-host"
+    "short": "Lightweight PHP CRM, easy to self-host",
+    "needs": {
+      "engine": "mariadb",
+      "required": true,
+      "env": {
+        "host": "ESPOCRM_DATABASE_HOST",
+        "port": "ESPOCRM_DATABASE_PORT",
+        "name": "ESPOCRM_DATABASE_NAME",
+        "user": "ESPOCRM_DATABASE_USER",
+        "password": "ESPOCRM_DATABASE_PASSWORD"
+      },
+      "url_env": null,
+      "note": "ESPOCRM_DATABASE_PLATFORM selects Mysql (default) or Postgresql."
+    }
   },
   {
     "name": "Krayin",
@@ -90,16 +186,6 @@
     "short": "Laravel CRM for small sales teams"
   },
   {
-    "name": "SuiteCRM",
-    "slug": "suitecrm",
-    "category": "CRM",
-    "repo": "SuiteCRM/SuiteCRM",
-    "image": null,
-    "home": "https://www.suitecrm.com",
-    "license": "AGPL-3.0",
-    "short": "Mature enterprise CRM, SugarCRM's successor"
-  },
-  {
     "name": "Twenty",
     "slug": "twenty",
     "category": "CRM",
@@ -107,7 +193,13 @@
     "image": "twentycrm/twenty",
     "home": "https://twenty.com",
     "license": "NOASSERTION",
-    "short": "Modern CRM, positioned against Salesforce"
+    "short": "Modern CRM, positioned against Salesforce",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": null,
+      "url_env": "PG_DATABASE_URL"
+    }
   },
   {
     "name": "Bagisto",
@@ -117,7 +209,20 @@
     "image": "webkul/bagisto",
     "home": "https://bagisto.com",
     "license": "MIT",
-    "short": "Laravel e-commerce with multi-vendor support"
+    "short": "Laravel e-commerce with multi-vendor support",
+    "needs": {
+      "engine": "mariadb",
+      "required": false,
+      "env": {
+        "host": "DB_HOST",
+        "port": "DB_PORT",
+        "name": "DB_DATABASE",
+        "user": "DB_USERNAME",
+        "password": "DB_PASSWORD"
+      },
+      "url_env": null,
+      "note": "The image bundles MySQL 8.0 and runs standalone; setting DB_HOST to anything other than 127.0.0.1 or localhost disables the internal server. Worth provisioning anyway: the bundled data lives inside the container."
+    }
   },
   {
     "name": "Medusa",
@@ -127,7 +232,13 @@
     "image": null,
     "home": "https://medusajs.com",
     "license": "NOASSERTION",
-    "short": "Headless commerce backend for custom storefronts"
+    "short": "Headless commerce backend for custom storefronts",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": null,
+      "url_env": "DATABASE_URL"
+    }
   },
   {
     "name": "Spree",
@@ -137,17 +248,13 @@
     "image": "spreecommerce/spree",
     "home": "https://spreecommerce.org",
     "license": "BSD-3-Clause",
-    "short": "Rails commerce platform, long-established"
-  },
-  {
-    "name": "Sylius",
-    "slug": "sylius",
-    "category": "Commerce",
-    "repo": "Sylius/Sylius",
-    "image": null,
-    "home": "https://sylius.com",
-    "license": "MIT",
-    "short": "Symfony e-commerce for tailored shops"
+    "short": "Rails commerce platform, long-established",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": null,
+      "url_env": "DATABASE_URL"
+    }
   },
   {
     "name": "Vendure",
@@ -177,7 +284,14 @@
     "image": "mattermost/mattermost-team-edition",
     "home": "https://mattermost.com",
     "license": "NOASSERTION",
-    "short": "Secure team messaging, Slack alternative"
+    "short": "Secure team messaging, Slack alternative",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": null,
+      "url_env": "MM_SQLSETTINGS_DATASOURCE",
+      "note": "MM_SQLSETTINGS_DRIVERNAME must also be set (postgres or mysql) and must agree with the DSN scheme."
+    }
   },
   {
     "name": "Rocket.Chat",
@@ -187,7 +301,14 @@
     "image": "rocket.chat",
     "home": "https://rocket.chat/",
     "license": "NOASSERTION",
-    "short": "Team chat with compliance controls"
+    "short": "Team chat with compliance controls",
+    "needs": {
+      "engine": "mongo",
+      "required": true,
+      "env": null,
+      "url_env": "MONGO_URL",
+      "note": "MONGO_OPLOG_URL is also read and must point at the 'local' database of the same replica set."
+    }
   },
   {
     "name": "Zulip",
@@ -197,7 +318,20 @@
     "image": "zulip/docker-zulip",
     "home": "https://zulip.com",
     "license": "Apache-2.0",
-    "short": "Threaded team chat organised by topic"
+    "short": "Threaded team chat organised by topic",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": {
+        "host": "SETTING_REMOTE_POSTGRES_HOST",
+        "port": "SETTING_REMOTE_POSTGRES_PORT",
+        "name": "CONFIG_postgresql__database_name",
+        "user": "CONFIG_postgresql__database_user",
+        "password": "SECRETS_postgres_password"
+      },
+      "url_env": null,
+      "note": "Verified from entrypoint.sh. Upstream ships zulip/zulip-postgresql for its stemming dictionaries; stock postgres works but full-text search quality differs, and PGroonga search additionally needs that extension."
+    }
   },
   {
     "name": "Mayan EDMS",
@@ -207,7 +341,14 @@
     "image": "mayanedms/mayanedms",
     "home": "https://www.mayan-edms.com",
     "license": "NOASSERTION",
-    "short": "Document management with workflows and metadata"
+    "short": "Document management with workflows and metadata",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": null,
+      "url_env": null,
+      "note": "NOT WIRABLE FROM DISCRETE FIELDS: the container reads a single MAYAN_DATABASES variable holding a Django DATABASES dict literal. The MAYAN_DATABASE_HOST/NAME/USER/PASSWORD/PORT names in upstream's .env are compose-level substitutions into that string and are UNVERIFIED as container variables."
+    }
   },
   {
     "name": "Paperless-ngx",
@@ -217,7 +358,20 @@
     "image": "paperlessngx/paperless-ngx",
     "home": "http://docs.paperless-ngx.com/",
     "license": "GPL-3.0",
-    "short": "Scan, OCR and archive paper documents"
+    "short": "Scan, OCR and archive paper documents",
+    "needs": {
+      "engine": "postgres",
+      "required": false,
+      "env": {
+        "host": "PAPERLESS_DBHOST",
+        "port": "PAPERLESS_DBPORT",
+        "name": "PAPERLESS_DBNAME",
+        "user": "PAPERLESS_DBUSER",
+        "password": "PAPERLESS_DBPASS"
+      },
+      "url_env": null,
+      "note": "Defaults to SQLite when PAPERLESS_DBHOST is unset. PAPERLESS_DBENGINE selects postgresql or mariadb."
+    }
   },
   {
     "name": "Papermerge",
@@ -227,7 +381,20 @@
     "image": "papermerge/papermerge",
     "home": "https://papermerge.com",
     "license": "Apache-2.0",
-    "short": "Document archive with OCR and tagging"
+    "short": "Document archive with OCR and tagging",
+    "needs": {
+      "engine": "postgres",
+      "required": false,
+      "env": {
+        "host": "PAPERMERGE__DATABASE__HOST",
+        "port": null,
+        "name": "PAPERMERGE__DATABASE__NAME",
+        "user": "PAPERMERGE__DATABASE__USER",
+        "password": "PAPERMERGE__DATABASE__PASSWORD"
+      },
+      "url_env": null,
+      "note": "Double underscores between segments. Defaults to SQLite; set PAPERMERGE__DATABASE__TYPE=postgres. A port variable is not shown in upstream's compose and is UNVERIFIED, so a non-5432 port cannot be assumed to work."
+    }
   },
   {
     "name": "AFFiNE",
@@ -237,7 +404,14 @@
     "image": "ghcr.io/toeverything/affine:stable",
     "home": "https://affine.pro",
     "license": "NOASSERTION",
-    "short": "Docs, whiteboard and database in one canvas"
+    "short": "Docs, whiteboard and database in one canvas",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": null,
+      "url_env": "DATABASE_URL",
+      "note": "Upstream runs pgvector/pgvector:pg16, not stock postgres; AI features need the pgvector extension in the app's database."
+    }
   },
   {
     "name": "BookStack",
@@ -247,7 +421,19 @@
     "image": "linuxserver/bookstack",
     "home": "https://codeberg.org/bookstack/bookstack",
     "license": "MIT",
-    "short": "Structured documentation in books and chapters"
+    "short": "Structured documentation in books and chapters",
+    "needs": {
+      "engine": "mariadb",
+      "required": true,
+      "env": {
+        "host": "DB_HOST",
+        "port": "DB_PORT",
+        "name": "DB_DATABASE",
+        "user": "DB_USERNAME",
+        "password": "DB_PASSWORD"
+      },
+      "url_env": null
+    }
   },
   {
     "name": "Docmost",
@@ -257,7 +443,13 @@
     "image": "docmost/docmost",
     "home": "https://docmost.com",
     "license": "AGPL-3.0",
-    "short": "Collaborative docs and wiki, real-time editing"
+    "short": "Collaborative docs and wiki, real-time editing",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": null,
+      "url_env": "DATABASE_URL"
+    }
   },
   {
     "name": "Outline",
@@ -267,7 +459,13 @@
     "image": "outlinewiki/outline",
     "home": "https://www.getoutline.com",
     "license": "NOASSERTION",
-    "short": "Team wiki and knowledge base, fast search"
+    "short": "Team wiki and knowledge base, fast search",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": null,
+      "url_env": "DATABASE_URL"
+    }
   },
   {
     "name": "Wiki.js",
@@ -277,7 +475,20 @@
     "image": "requarks/wiki",
     "home": "https://js.wiki",
     "license": "AGPL-3.0",
-    "short": "Modern wiki with many auth backends"
+    "short": "Modern wiki with many auth backends",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": {
+        "host": "DB_HOST",
+        "port": "DB_PORT",
+        "name": "DB_NAME",
+        "user": "DB_USER",
+        "password": "DB_PASS"
+      },
+      "url_env": null,
+      "note": "DB_TYPE selects the engine: postgres (upstream default), mysql, mariadb, mssql or sqlite."
+    }
   },
   {
     "name": "Apache OFBiz",
@@ -297,7 +508,20 @@
     "image": "axelor/aos-ce",
     "home": "http://axelor.com",
     "license": "NOASSERTION",
-    "short": "Low-code ERP with a visual process builder"
+    "short": "Low-code ERP with a visual process builder",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": {
+        "host": "PGHOST",
+        "port": null,
+        "name": "PGDATABASE",
+        "user": "PGUSER",
+        "password": "PGPASSWORD"
+      },
+      "url_env": null,
+      "note": "Only PGHOST/PGUSER/PGPASSWORD/PGDATABASE are documented for this image. A port variable is NOT documented and PGPORT is unverified, so a non-5432 port cannot be assumed to work."
+    }
   },
   {
     "name": "Dolibarr",
@@ -307,7 +531,20 @@
     "image": "dolibarr/dolibarr",
     "home": "https://www.dolibarr.org",
     "license": "GPL-3.0",
-    "short": "ERP and CRM aimed at small firms and freelancers"
+    "short": "ERP and CRM aimed at small firms and freelancers",
+    "needs": {
+      "engine": "mariadb",
+      "required": true,
+      "env": {
+        "host": "DOLI_DB_HOST",
+        "port": "DOLI_DB_HOST_PORT",
+        "name": "DOLI_DB_NAME",
+        "user": "DOLI_DB_USER",
+        "password": "DOLI_DB_PASSWORD"
+      },
+      "url_env": null,
+      "note": "Note the port variable is DOLI_DB_HOST_PORT. DOLI_DB_TYPE selects mysqli (default) or pgsql."
+    }
   },
   {
     "name": "ERPNext",
@@ -327,7 +564,20 @@
     "image": "odoo",
     "home": "https://www.odoo.com",
     "license": "NOASSERTION",
-    "short": "Full business suite \u2014 sales, stock, accounting, HR"
+    "short": "Full business suite \u2014 sales, stock, accounting, HR",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": {
+        "host": "HOST",
+        "port": "PORT",
+        "name": null,
+        "user": "USER",
+        "password": "PASSWORD"
+      },
+      "url_env": null,
+      "note": "Variable names are the bare words HOST/PORT/USER/PASSWORD. There is NO database-name variable: Odoo creates and selects databases itself through its web database manager, so its role needs CREATEDB rather than rights on one pre-made database."
+    }
   },
   {
     "name": "Tryton",
@@ -337,7 +587,20 @@
     "image": "tryton/tryton",
     "home": "https://code.tryton.org/tryton",
     "license": "NOASSERTION",
-    "short": "Modular ERP, three-tier, heavily customisable"
+    "short": "Modular ERP, three-tier, heavily customisable",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": {
+        "host": "DB_HOSTNAME",
+        "port": "DB_PORT",
+        "name": null,
+        "user": "DB_USER",
+        "password": "DB_PASSWORD"
+      },
+      "url_env": "TRYTOND_DATABASE_URI",
+      "note": "Verified from /entrypoint.sh in tryton/tryton:latest, which builds TRYTOND_DATABASE_URI from DB_HOSTNAME/DB_PORT/DB_USER/DB_PASSWORD. The database NAME is not read from the environment by the server: upstream passes it to trytond-admin -d, so the database must be created and initialised out of band."
+    }
   },
   {
     "name": "Documenso",
@@ -347,7 +610,14 @@
     "image": "documenso/documenso",
     "home": "https://documenso.com",
     "license": "AGPL-3.0",
-    "short": "E-signatures \u2014 DocuSign alternative"
+    "short": "E-signatures \u2014 DocuSign alternative",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": null,
+      "url_env": "NEXT_PRIVATE_DATABASE_URL",
+      "note": "NEXT_PRIVATE_DIRECT_DATABASE_URL may be set to the same value when no connection pooler is in front."
+    }
   },
   {
     "name": "OpenSign",
@@ -357,7 +627,13 @@
     "image": "opensign/opensign:main",
     "home": "https://www.opensignlabs.com",
     "license": "NOASSERTION",
-    "short": "Digital signing with audit trails"
+    "short": "Digital signing with audit trails",
+    "needs": {
+      "engine": "mongo",
+      "required": true,
+      "env": null,
+      "url_env": "MONGODB_URI"
+    }
   },
   {
     "name": "Formbricks",
@@ -367,7 +643,13 @@
     "image": "formbricks/formbricks",
     "home": "https://formbricks.com",
     "license": "NOASSERTION",
-    "short": "Surveys and in-product feedback"
+    "short": "Surveys and in-product feedback",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": null,
+      "url_env": "DATABASE_URL"
+    }
   },
   {
     "name": "LimeSurvey",
@@ -377,7 +659,20 @@
     "image": "martialblog/limesurvey",
     "home": "https://www.limesurvey.org",
     "license": "NOASSERTION",
-    "short": "Long-form surveys with complex branching"
+    "short": "Long-form surveys with complex branching",
+    "needs": {
+      "engine": "mariadb",
+      "required": true,
+      "env": {
+        "host": "DB_HOST",
+        "port": "DB_PORT",
+        "name": "DB_NAME",
+        "user": "DB_USERNAME",
+        "password": "DB_PASSWORD"
+      },
+      "url_env": null,
+      "note": "DB_TYPE selects mysql (default) or pgsql."
+    }
   },
   {
     "name": "Frappe HR",
@@ -397,7 +692,20 @@
     "image": "horilla/horilla",
     "home": "https://www.horilla.com/",
     "license": "LGPL-2.1",
-    "short": "Django HR suite with payroll and onboarding"
+    "short": "Django HR suite with payroll and onboarding",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": {
+        "host": "DB_HOST",
+        "port": "DB_PORT",
+        "name": "DB_NAME",
+        "user": "DB_USER",
+        "password": "DB_PASSWORD"
+      },
+      "url_env": "DATABASE_URL",
+      "note": "DB_HOST and DB_PORT are read separately from DATABASE_URL: the entrypoint waits on that host:port before migrating, so set both even when passing a URL. DB_ENGINE must be django.db.backends.postgresql."
+    }
   },
   {
     "name": "OrangeHRM",
@@ -407,7 +715,14 @@
     "image": "orangehrm/orangehrm",
     "home": "https://www.orangehrm.com",
     "license": "GPL-3.0",
-    "short": "HR management \u2014 leave, time, recruitment"
+    "short": "HR management \u2014 leave, time, recruitment",
+    "needs": {
+      "engine": "mariadb",
+      "required": true,
+      "env": null,
+      "url_env": null,
+      "note": "NOT WIRABLE: the image is plain PHP+Apache and declares no database variables; the host, name, user and password are typed into OrangeHRM's own web installer on first run. Provision the database and surface the credentials to the user."
+    }
   },
   {
     "name": "Chatwoot",
@@ -417,7 +732,19 @@
     "image": "chatwoot/chatwoot",
     "home": "https://www.chatwoot.com/help-center",
     "license": "NOASSERTION",
-    "short": "Customer support inbox across chat and email"
+    "short": "Customer support inbox across chat and email",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": {
+        "host": "POSTGRES_HOST",
+        "port": "POSTGRES_PORT",
+        "name": "POSTGRES_DATABASE",
+        "user": "POSTGRES_USERNAME",
+        "password": "POSTGRES_PASSWORD"
+      },
+      "url_env": null
+    }
   },
   {
     "name": "FreeScout",
@@ -427,7 +754,20 @@
     "image": "tiredofit/freescout",
     "home": "https://freescout.net",
     "license": "AGPL-3.0",
-    "short": "Shared inbox helpdesk, Help Scout alternative"
+    "short": "Shared inbox helpdesk, Help Scout alternative",
+    "needs": {
+      "engine": "mariadb",
+      "required": true,
+      "env": {
+        "host": "DB_HOST",
+        "port": "DB_PORT",
+        "name": "DB_NAME",
+        "user": "DB_USER",
+        "password": "DB_PASS"
+      },
+      "url_env": null,
+      "note": "DB_TYPE selects mysql (default) or pgsql. Note DB_NAME/DB_USER/DB_PASS, not the Laravel DB_DATABASE/DB_USERNAME/DB_PASSWORD spellings."
+    }
   },
   {
     "name": "UVdesk",
@@ -437,7 +777,14 @@
     "image": "webkul/uvdesk",
     "home": "https://www.uvdesk.com",
     "license": "OSL-3.0",
-    "short": "Symfony helpdesk with a ticket workflow engine"
+    "short": "Symfony helpdesk with a ticket workflow engine",
+    "needs": {
+      "engine": "mariadb",
+      "required": false,
+      "env": null,
+      "url_env": null,
+      "note": "NOT WIRABLE: the image bundles MySQL 8.0 and its docs say an external MySQL can be used but document NO environment variables for it; the connection is written into /var/www/uvdesk/.env inside the container. Provision the database and surface the credentials to the user rather than injecting them."
+    }
   },
   {
     "name": "Zammad",
@@ -447,7 +794,19 @@
     "image": "zammad/zammad",
     "home": "https://zammad.org",
     "license": "AGPL-3.0",
-    "short": "Helpdesk and ticketing with strong email handling"
+    "short": "Helpdesk and ticketing with strong email handling",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": {
+        "host": "POSTGRESQL_HOST",
+        "port": "POSTGRESQL_PORT",
+        "name": "POSTGRESQL_DB",
+        "user": "POSTGRESQL_USER",
+        "password": "POSTGRESQL_PASS"
+      },
+      "url_env": null
+    }
   },
   {
     "name": "InvenTree",
@@ -457,7 +816,20 @@
     "image": "inventree/inventree",
     "home": "https://docs.inventree.org",
     "license": "MIT",
-    "short": "Parts and stock control with a REST API"
+    "short": "Parts and stock control with a REST API",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": {
+        "host": "INVENTREE_DB_HOST",
+        "port": "INVENTREE_DB_PORT",
+        "name": "INVENTREE_DB_NAME",
+        "user": "INVENTREE_DB_USER",
+        "password": "INVENTREE_DB_PASSWORD"
+      },
+      "url_env": null,
+      "note": "INVENTREE_DB_ENGINE selects the backend (postgresql / mysql / sqlite)."
+    }
   },
   {
     "name": "Snipe-IT",
@@ -467,7 +839,20 @@
     "image": "snipe/snipe-it",
     "home": "https://snipeitapp.com",
     "license": "AGPL-3.0",
-    "short": "IT asset tracking \u2014 who has which laptop"
+    "short": "IT asset tracking \u2014 who has which laptop",
+    "needs": {
+      "engine": "mariadb",
+      "required": true,
+      "env": {
+        "host": "DB_HOST",
+        "port": "DB_PORT",
+        "name": "DB_DATABASE",
+        "user": "DB_USERNAME",
+        "password": "DB_PASSWORD"
+      },
+      "url_env": null,
+      "note": "DB_CONNECTION should be mariadb."
+    }
   },
   {
     "name": "SENAITE",
@@ -487,7 +872,14 @@
     "image": "appsmith/appsmith-ce",
     "home": "https://www.appsmith.com",
     "license": "Apache-2.0",
-    "short": "Build internal tools and admin panels visually"
+    "short": "Build internal tools and admin panels visually",
+    "needs": {
+      "engine": "postgres",
+      "required": false,
+      "env": null,
+      "url_env": "APPSMITH_DB_URL",
+      "note": "Appsmith CE embeds its database in the container and runs standalone. APPSMITH_DB_URL points it at an external one; the entrypoint branches on whether the URL is postgres, and older builds took a mongodb:// URL in this same variable, so confirm against the tag being deployed."
+    }
   },
   {
     "name": "Baserow",
@@ -497,7 +889,19 @@
     "image": "baserow/baserow",
     "home": "https://baserow.io",
     "license": "NOASSERTION",
-    "short": "Airtable-style database, no-code"
+    "short": "Airtable-style database, no-code",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": {
+        "host": "DATABASE_HOST",
+        "port": "DATABASE_PORT",
+        "name": "DATABASE_NAME",
+        "user": "DATABASE_USER",
+        "password": "DATABASE_PASSWORD"
+      },
+      "url_env": "DATABASE_URL"
+    }
   },
   {
     "name": "Budibase",
@@ -517,7 +921,14 @@
     "image": "nocodb/nocodb",
     "home": "https://nocodb.com",
     "license": "NOASSERTION",
-    "short": "Turn any database into a spreadsheet UI"
+    "short": "Turn any database into a spreadsheet UI",
+    "needs": {
+      "engine": "postgres",
+      "required": false,
+      "env": null,
+      "url_env": "NC_DB",
+      "note": "Defaults to SQLite. NC_DB is NOT a standard connection URI: upstream's form is pg://host:port?u=user&p=password&d=dbname."
+    }
   },
   {
     "name": "Teable",
@@ -527,7 +938,14 @@
     "image": "teableio/teable",
     "home": "https://teable.ai",
     "license": "NOASSERTION",
-    "short": "Spreadsheet-database hybrid on Postgres"
+    "short": "Spreadsheet-database hybrid on Postgres",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": null,
+      "url_env": "PRISMA_DATABASE_URL",
+      "note": "The POSTGRES_* names in the upstream example are compose-level only; the container reads PRISMA_DATABASE_URL."
+    }
   },
   {
     "name": "ToolJet",
@@ -537,7 +955,20 @@
     "image": "tooljet/tooljet",
     "home": "https://tooljet.com",
     "license": "AGPL-3.0",
-    "short": "Drag-and-drop internal apps over your databases"
+    "short": "Drag-and-drop internal apps over your databases",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": {
+        "host": "PG_HOST",
+        "port": "PG_PORT",
+        "name": "PG_DB",
+        "user": "PG_USER",
+        "password": "PG_PASS"
+      },
+      "url_env": null,
+      "note": "ToolJet also wants a SECOND database for its built-in no-code tables, wired through TOOLJET_DB / TOOLJET_DB_HOST / TOOLJET_DB_PORT / TOOLJET_DB_USER / TOOLJET_DB_PASS."
+    }
   },
   {
     "name": "listmonk",
@@ -547,7 +978,20 @@
     "image": "listmonk/listmonk",
     "home": "https://listmonk.app",
     "license": "AGPL-3.0",
-    "short": "Newsletters and mailing lists, very fast"
+    "short": "Newsletters and mailing lists, very fast",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": {
+        "host": "LISTMONK_db__host",
+        "port": "LISTMONK_db__port",
+        "name": "LISTMONK_db__database",
+        "user": "LISTMONK_db__user",
+        "password": "LISTMONK_db__password"
+      },
+      "url_env": null,
+      "note": "The 'db' segment is lower-case and the separator is a double underscore; LISTMONK_DB__HOST does not work."
+    }
   },
   {
     "name": "Mautic",
@@ -557,7 +1001,19 @@
     "image": "mautic/mautic",
     "home": "https://www.mautic.org",
     "license": "NOASSERTION",
-    "short": "Marketing automation and campaign journeys"
+    "short": "Marketing automation and campaign journeys",
+    "needs": {
+      "engine": "mariadb",
+      "required": true,
+      "env": {
+        "host": "MAUTIC_DB_HOST",
+        "port": "MAUTIC_DB_PORT",
+        "name": "MAUTIC_DB_DATABASE",
+        "user": "MAUTIC_DB_USER",
+        "password": "MAUTIC_DB_PASSWORD"
+      },
+      "url_env": null
+    }
   },
   {
     "name": "Grafana Loki",
@@ -587,7 +1043,14 @@
     "image": "kanboard/kanboard",
     "home": "https://kanboard.org",
     "license": "MIT",
-    "short": "Minimal kanban, very light to run"
+    "short": "Minimal kanban, very light to run",
+    "needs": {
+      "engine": "postgres",
+      "required": false,
+      "env": null,
+      "url_env": "DATABASE_URL",
+      "note": "Defaults to SQLite and runs standalone. DATABASE_URL takes either postgres://... or mysql://...; upstream ships a compose example for each."
+    }
   },
   {
     "name": "Leantime",
@@ -597,7 +1060,20 @@
     "image": "leantime/leantime",
     "home": "https://leantime.io",
     "license": "AGPL-3.0",
-    "short": "Project management aimed at non-project managers"
+    "short": "Project management aimed at non-project managers",
+    "needs": {
+      "engine": "mariadb",
+      "required": true,
+      "env": {
+        "host": "LEAN_DB_HOST",
+        "port": "LEAN_DB_PORT",
+        "name": "LEAN_DB_DATABASE",
+        "user": "LEAN_DB_USER",
+        "password": "LEAN_DB_PASSWORD"
+      },
+      "url_env": null,
+      "note": "LEAN_DB_DEFAULT_CONNECTION selects mysql (default) or pgsql. First run still requires visiting /install."
+    }
   },
   {
     "name": "OpenProject",
@@ -607,7 +1083,14 @@
     "image": "openproject/openproject:17",
     "home": "https://www.openproject.org",
     "license": "GPL-3.0",
-    "short": "Classic project management with Gantt charts"
+    "short": "Classic project management with Gantt charts",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": null,
+      "url_env": "DATABASE_URL",
+      "note": "The DB_* names in the upstream compose are shell substitutions into DATABASE_URL; the container itself reads only DATABASE_URL."
+    }
   },
   {
     "name": "Vikunja",
@@ -617,7 +1100,20 @@
     "image": "vikunja/vikunja",
     "home": "https://vikunja.io",
     "license": "AGPL-3.0",
-    "short": "To-do and project lists, list or kanban view"
+    "short": "To-do and project lists, list or kanban view",
+    "needs": {
+      "engine": "postgres",
+      "required": false,
+      "env": {
+        "host": "VIKUNJA_DATABASE_HOST",
+        "port": null,
+        "name": "VIKUNJA_DATABASE_DATABASE",
+        "user": "VIKUNJA_DATABASE_USER",
+        "password": "VIKUNJA_DATABASE_PASSWORD"
+      },
+      "url_env": null,
+      "note": "Defaults to SQLite and runs standalone. Set VIKUNJA_DATABASE_TYPE to postgres or mysql. Host and port share VIKUNJA_DATABASE_HOST as host:port; there is no separate port variable."
+    }
   },
   {
     "name": "Wekan",
@@ -627,7 +1123,13 @@
     "image": "wekanteam/wekan",
     "home": "https://wekan.fi",
     "license": "MIT",
-    "short": "Open kanban board, Meteor-based"
+    "short": "Open kanban board, Meteor-based",
+    "needs": {
+      "engine": "mongo",
+      "required": true,
+      "env": null,
+      "url_env": "MONGO_URL"
+    }
   },
   {
     "name": "Cal.com",
@@ -637,7 +1139,14 @@
     "image": "calcom/cal.com",
     "home": "https://cal.diy",
     "license": "MIT",
-    "short": "Scheduling and booking pages \u2014 Calendly alternative"
+    "short": "Scheduling and booking pages \u2014 Calendly alternative",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": null,
+      "url_env": "DATABASE_URL",
+      "note": "DATABASE_DIRECT_URL is also read and should be set to the same value when no connection pooler is used."
+    }
   },
   {
     "name": "Easy!Appointments",
@@ -647,7 +1156,20 @@
     "image": "alextselegidis/easyappointments",
     "home": "https://easyappointments.org",
     "license": "GPL-3.0",
-    "short": "Appointment booking for service businesses"
+    "short": "Appointment booking for service businesses",
+    "needs": {
+      "engine": "mariadb",
+      "required": true,
+      "env": {
+        "host": "DB_HOST",
+        "port": null,
+        "name": "DB_NAME",
+        "user": "DB_USERNAME",
+        "password": "DB_PASSWORD"
+      },
+      "url_env": null,
+      "note": "The image declares no port variable, so a non-3306 port cannot be assumed to work."
+    }
   },
   {
     "name": "Rallly",
@@ -657,6 +1179,12 @@
     "image": "lukevella/rallly",
     "home": "https://rallly.co",
     "license": "AGPL-3.0",
-    "short": "Group meeting polls, no account needed"
+    "short": "Group meeting polls, no account needed",
+    "needs": {
+      "engine": "postgres",
+      "required": true,
+      "env": null,
+      "url_env": "DATABASE_URL"
+    }
   }
 ]

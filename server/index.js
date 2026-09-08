@@ -41,6 +41,7 @@ import envVarsRoutes from './routes/envVars.js';
 import healthRoutes from './routes/health.js';
 import webhooksRoutes from './routes/webhooks.js';
 import backupsRoutes from './routes/backups.js';
+import managedDbRoutes from './routes/managedDb.js';
 import logsRoutes from './routes/logs.js';
 import monitoringRoutes from './routes/monitoring.js';
 import notificationsRoutes from './routes/notifications.js';
@@ -971,6 +972,7 @@ app.use('/api/apps', deployRoutes);     // /api/apps/:slug/deploy/:env
 app.use('/api/apps', envVarsRoutes);     // /api/apps/:slug/env/:env
 app.use('/api/apps', healthRoutes);      // /api/apps/:slug/health/:env
 app.use('/api/apps', backupsRoutes);     // /api/apps/:slug/backup/:env
+app.use('/api/apps', managedDbRoutes);   // /api/apps/:slug/database — shared Postgres/MariaDB, one DB + one user per app
 app.use('/api/apps', notificationsRoutes); // /api/apps/:slug/notifications
 // /api/apps/:slug/app-roles — the roles an app defines for ITSELF. Distinct
 // from /api/apps/:slug/roles (usersRoutes, mounted at line ~854), which sets
