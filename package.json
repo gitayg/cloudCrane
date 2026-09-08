@@ -1,6 +1,6 @@
 {
   "name": "appcrane",
-  "version": "2.65.1",
+  "version": "2.65.2",
   "engines": { "node": ">=22" },
   "description": "AppCrane - Self-service app hosting and deployment.",
   "license": "AGPL-3.0-only",

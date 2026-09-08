@@ -99,6 +99,10 @@ body.resizing-sidebar .admin-sidebar, body.resizing-sidebar .admin-content { tra
 @media (max-width: 768px) { .sidebar-resizer { display: none; } }
 
 .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+/* v2.65.2: 1200px is a READING width — right for prose and forms, wrong for a
+   data table, which was being squeezed into it on a 2000px screen while its own
+   last column overflowed off the right edge. A table page opts out. */
+.container--wide { max-width: min(1900px, 100%); }
 
 /* ── Desktop topbar ──────────────────────────────── */
 /* ── Sidebar logo ────────────────────────────────── */
@@ -666,6 +670,33 @@ textarea:focus { border-color: var(--accent); }
                          rather than squeezed, because a 30px-wide column of
                          truncated numbers helps nobody. display:none on a
                          <col>-less table has to hit BOTH th and td. */
+/* Freeze the identity columns while the data scrolls under them. Without this,
+   scrolling right to reach Deploy takes the app's NAME off screen, so you are
+   choosing an action for a row you can no longer identify.
+
+   Two columns, because the first is the 28px expand toggle and the name lives in
+   the second. The offset must equal the first column's real rendered width, so
+   that width is pinned here rather than left to the 6px/8px cell padding:
+   24 content + 6 left + 4 right = 34. */
+.apps-table--freeze th:nth-child(1),
+.apps-table--freeze td:nth-child(1) {
+  position: sticky; left: 0; z-index: 2;
+  width: 34px; min-width: 34px; padding-left: 6px; padding-right: 4px;
+  background: var(--bg);
+}
+.apps-table--freeze th:nth-child(2),
+.apps-table--freeze td:nth-child(2) {
+  position: sticky; left: 34px; z-index: 2;
+  background: var(--bg);
+  box-shadow: 8px 0 8px -8px rgba(0,0,0,.45);
+}
+.apps-table--freeze thead th:nth-child(1),
+.apps-table--freeze thead th:nth-child(2) { background: var(--surface); z-index: 4; }
+.apps-table--freeze tbody tr:hover td:nth-child(1),
+.apps-table--freeze tbody tr:hover td:nth-child(2) { background: var(--surface); }
+.apps-table--freeze tbody tr.apps-row-selected > td:nth-child(1),
+.apps-table--freeze tbody tr.apps-row-selected > td:nth-child(2) { background: #1e2a3d; }
+
 .apps-table--actions th:last-child,
 .apps-table--actions td:last-child {
   position: sticky; right: 0; z-index: 2;

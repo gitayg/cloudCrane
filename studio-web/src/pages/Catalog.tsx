@@ -454,7 +454,7 @@ export function Catalog() {
   )
 
   return (
-    <div className="container">
+    <div className="container container--wide">
       <h2>App Catalogue</h2>
 
       <p style={{ margin: '0 0 14px', fontSize: '.85rem', color: 'var(--dim)', maxWidth: 760, lineHeight: 1.5 }}>
@@ -537,7 +537,7 @@ export function Catalog() {
       )}
 
       <div className="apps-table-wrap">
-        <table className="apps-table apps-table--actions">
+        <table className="apps-table apps-table--actions apps-table--freeze">
           <thead>
             <tr>
               <th style={{ width: 28 }} aria-label="Expand" />

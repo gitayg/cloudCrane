@@ -1186,5 +1186,55 @@
       "env": null,
       "url_env": "DATABASE_URL"
     }
+  },
+  {
+    "name": "Dependency-Track",
+    "slug": "dependency-track",
+    "category": "Security",
+    "repo": "DependencyTrack/dependency-track",
+    "image": "dependencytrack/bundled",
+    "home": "https://dependencytrack.org",
+    "license": "Apache-2.0",
+    "short": "SBOM analysis and supply-chain risk",
+    "needs": {
+      "engine": "postgres",
+      "env": {
+        "host": "ALPINE_DATABASE_HOSTNAME",
+        "port": "ALPINE_DATABASE_PORT",
+        "name": "ALPINE_DATABASE_NAME",
+        "user": "ALPINE_DATABASE_USERNAME",
+        "password": "ALPINE_DATABASE_PASSWORD"
+      }
+    }
+  },
+  {
+    "name": "OWASP Threat Dragon",
+    "slug": "threat-dragon",
+    "category": "Security",
+    "repo": "OWASP/threat-dragon",
+    "image": "owasp/threat-dragon:stable",
+    "home": "https://owasp.org/www-project-threat-dragon/",
+    "license": "Apache-2.0",
+    "short": "Threat modelling with data-flow diagrams"
+  },
+  {
+    "name": "SimpleRisk",
+    "slug": "simplerisk",
+    "category": "Security",
+    "repo": "simplerisk/code",
+    "image": "simplerisk/simplerisk",
+    "home": "https://www.simplerisk.com",
+    "license": "MPL-2.0",
+    "short": "Risk management and assessment tracking",
+    "needs": {
+      "engine": "mariadb",
+      "env": {
+        "host": "SIMPLERISK_DB_HOSTNAME",
+        "port": "SIMPLERISK_DB_PORT",
+        "name": "SIMPLERISK_DB_DATABASE",
+        "user": "SIMPLERISK_DB_USERNAME",
+        "password": "SIMPLERISK_DB_PASSWORD"
+      }
+    }
   }
 ]
