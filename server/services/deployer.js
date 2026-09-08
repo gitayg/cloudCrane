@@ -8,6 +8,123 @@ import log from '../utils/logger.js';
 import { AppError } from '../utils/errors.js';
 import { getIngressForApp } from './tcpIngress.js';
 import { ensureCodebaseContext } from './appstudio/contextBuilder.js';
+import { findEntry } from './catalogService.js';
+import { credentialsFor } from './managedDb.js';
+
+// ---------------------------------------------------------------------------
+// Managed database credentials -> container environment
+// ---------------------------------------------------------------------------
+//
+// 54 of the 64 catalogue entries need an external SQL database, and they do NOT
+// agree on what to call it: BookStack reads DB_HOST/DB_USERNAME/DB_PASSWORD/
+// DB_DATABASE, Baserow reads DATABASE_HOST/DATABASE_USER/..., Outline reads a
+// single DATABASE_URL, Tryton reads DB_HOSTNAME and gets its database name from
+// somewhere else entirely. The manifest records each entry's own spelling in
+// `needs.env` / `needs.url_env`, so injection is a lookup, not a convention.
+//
+// The link from an app row back to its manifest entry is `apps.catalog_slug`,
+// written at install time. Matching on github_url or image_ref instead was
+// rejected: a user can edit either after creation, and a wrong match sets
+// ANOTHER app's variable names.
+//
+// This module never provisions. If the app has no provisioned database the
+// deploy proceeds with nothing injected — a deploy path that quietly creates
+// infrastructure is a surprise, and provisioning is an explicit action.
+
+/**
+ * Connection URL for a managed database, in the `scheme://user:pass@host:port/db`
+ * form the url_env entries expect.
+ *
+ * THE PASSWORD IS PERCENT-ENCODED HERE rather than reused from
+ * managedDb.connectionFor()'s `url`. Today's generated passwords are base64url
+ * and need no escaping, but SAFE_PASSWORD also admits operator-supplied and
+ * migrated values, and one '@' or '/' in a password turns a connection string
+ * into a different host with no error anywhere — the app just cannot connect.
+ * Encoding costs nothing and removes the failure mode.
+ */
+export function managedDbUrl(creds) {
+  const scheme = String(creds.url || '').split('://')[0]
+    || (creds.engine === 'mariadb' ? 'mysql' : 'postgresql');
+  const auth = `${encodeURIComponent(creds.username)}:${encodeURIComponent(creds.password)}`;
+  return `${scheme}://${auth}@${creds.host}:${creds.port}/${creds.database}`;
+}
+
+/**
+ * Map one catalogue entry's `needs` block onto real credentials, producing the
+ * env vars THAT ENTRY'S IMAGE reads. Pure: no database, no docker, no logging.
+ *
+ * An entry may declare discrete fields, a single URL variable, or both (Metabase
+ * and Baserow declare both, and upstream reads whichever is set). A field mapped
+ * to null is skipped rather than injected empty — Tryton declares `name: null`
+ * because its server does not read the database name from the environment at
+ * all, and setting a blank DB_NAME there would be inventing a variable upstream
+ * never asked for.
+ */
+export function buildManagedDbEnv(needs, creds) {
+  if (!needs || !creds) return {};
+  const byField = {
+    host: creds.host,
+    port: creds.port == null ? null : String(creds.port),
+    name: creds.database,
+    user: creds.username,
+    password: creds.password,
+  };
+  const out = {};
+  for (const [field, varName] of Object.entries(needs.env || {})) {
+    if (typeof varName !== 'string' || !varName) continue;
+    const value = byField[field];
+    if (value == null) continue;
+    out[varName] = value;
+  }
+  if (typeof needs.url_env === 'string' && needs.url_env) {
+    out[needs.url_env] = managedDbUrl(creds);
+  }
+  return out;
+}
+
+/**
+ * Inject an app's managed-database credentials into a runtime env map, under the
+ * variable names its catalogue entry declares.
+ *
+ * PRECEDENCE — the app's OWN env var always wins. Someone who set DB_HOST by
+ * hand is pointing the app at a database they chose, very possibly one holding
+ * their data; silently overriding it would repoint a live app at an empty
+ * managed database and look like data loss. `claimedKeys` extends that to vars
+ * the user set but which failed to decrypt: the key is still theirs, and filling
+ * the gap with a managed credential would substitute a different database for
+ * the one they configured.
+ *
+ * Mutates `runtimeEnvVars`. Returns key NAMES only — the caller logs this, and
+ * a password must never reach a log line.
+ */
+export function applyManagedDbEnv(app, runtimeEnvVars, claimedKeys = []) {
+  const result = { engine: null, injected: [], deferred: [], reason: null };
+
+  const catalogSlug = app?.catalog_slug;
+  if (!catalogSlug) { result.reason = 'app was not installed from the catalogue'; return result; }
+
+  const entry = findEntry(catalogSlug);
+  if (!entry) { result.reason = `no catalogue entry '${catalogSlug}'`; return result; }
+  const needs = entry.needs;
+  if (!needs?.engine) { result.reason = `catalogue entry '${catalogSlug}' needs no database`; return result; }
+  result.engine = needs.engine;
+
+  // No provisioned database (never provisioned, or an engine managedDb does not
+  // support — several entries name mongo, which it does not). Inject nothing and
+  // let the app fail exactly the way it does today.
+  let creds = null;
+  try { creds = credentialsFor({ appId: app.id }, needs.engine); }
+  catch (_) { creds = null; }
+  if (!creds) { result.reason = `no provisioned ${needs.engine} database for this app`; return result; }
+
+  const claimed = new Set([...Object.keys(runtimeEnvVars), ...claimedKeys]);
+  for (const [key, value] of Object.entries(buildManagedDbEnv(needs, creds))) {
+    if (claimed.has(key)) { result.deferred.push(key); continue; }
+    runtimeEnvVars[key] = value;
+    result.injected.push(key);
+  }
+  return result;
+}
 
 // Prune old release checkouts under <appDir>/releases, keeping the newest
 // `keep` plus the currently-live release (the `current` symlink target), which
@@ -1327,6 +1444,31 @@ export async function deployApp(deployId, app, env, ports, opts = {}) {
         `WARNING: ${decryptFailures.length} env var(s) failed to decrypt ` +
         `(ENCRYPTION_KEY mismatch?) and were OMITTED from the container: ${decryptFailures.join(', ')}`
       );
+    }
+
+    // v2.65.0: managed database credentials, under the variable names THIS app's
+    // catalogue entry declares (apps.catalog_slug -> appCatalog.json `needs`).
+    // Runs AFTER the app's own env vars are in the map and reads from it, so an
+    // env var the user set by hand wins over the injected credential — see
+    // applyManagedDbEnv. Key names only in the log; the password is a value and
+    // never appears.
+    {
+      const mdbEnv = applyManagedDbEnv(app, runtimeEnvVars, decryptFailures);
+      if (mdbEnv.injected.length) {
+        appendLog(
+          `Managed ${mdbEnv.engine} database: injected ${mdbEnv.injected.length} ` +
+          `credential var(s): ${mdbEnv.injected.join(', ')}`
+        );
+      }
+      if (mdbEnv.deferred.length) {
+        appendLog(
+          `Managed ${mdbEnv.engine} database: kept this app's OWN value for ` +
+          `${mdbEnv.deferred.join(', ')} (an env var you set wins over the injected credential).`
+        );
+      }
+      if (!mdbEnv.injected.length && !mdbEnv.deferred.length && mdbEnv.reason && app.catalog_slug) {
+        appendLog(`Managed database: nothing injected (${mdbEnv.reason}).`);
+      }
     }
     // APP_BASE_PATH is intentionally NOT set at runtime: Caddy strips the slug
     // prefix before requests reach the container, so backends must mount at '/'.

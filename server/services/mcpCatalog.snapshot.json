@@ -1,5 +1,5 @@
 {
-  "count": 57,
+  "count": 59,
   "tools": [
     {
       "name": "appcrane_approve_access_request",
@@ -122,6 +122,11 @@
       "readOnly": true
     },
     {
+      "name": "appcrane_list_databases",
+      "requiredRole": "any",
+      "readOnly": true
+    },
+    {
       "name": "appcrane_list_releases",
       "requiredRole": "any",
       "readOnly": true
@@ -163,6 +168,11 @@
     },
     {
       "name": "appcrane_promote",
+      "requiredRole": "any",
+      "readOnly": false
+    },
+    {
+      "name": "appcrane_provision_database",
       "requiredRole": "any",
       "readOnly": false
     },

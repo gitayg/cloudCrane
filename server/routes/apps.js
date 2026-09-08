@@ -264,6 +264,49 @@ function validateHealthPath(p) {
   return v;
 }
 
+// catalog_slug — the app's link back to the entry in
+// server/services/appCatalog.json it was installed from (migration 086).
+//
+// WHY IT IS VALIDATED AT ALL. This is a client-supplied string whose only job
+// is to be looked up in a manifest, and the deployer will read that entry's
+// `needs` block to decide WHICH ENV VAR NAMES a managed database credential is
+// injected under. So the value selects a set of variable names on a live
+// container. An unconstrained string here is a lookup key an attacker chooses.
+//
+// THE SHAPE IS THE MANIFEST'S OWN. Every one of the 64 entries in
+// appCatalog.json matches /^[a-z0-9][a-z0-9-]*$/, longest 16 chars; the bound
+// below is 64, generous against future entries without being unbounded.
+// Consequences worth naming explicitly:
+//   - no '_', so '__proto__' cannot be stored;
+//   - no '/', '.' or whitespace, so the value cannot be a path, a traversal, or
+//     a shell word if it ever reaches one.
+//
+// 'constructor' is refused by name, and it is the ONLY name that needs to be.
+// Every other member of Object.prototype is camelCase (toString, valueOf,
+// hasOwnProperty, ...) and so is already rejected by the lowercase-only shape;
+// 'constructor' is the single one that survives it. It matters because a reader
+// that indexes the catalogue as a plain object — `byslug[app.catalog_slug]` —
+// gets a truthy function back for that key and believes it found an entry. The
+// manifest is an array today and a .find() over it is immune, but the value is
+// stored for OTHER modules to look up, and one word here costs nothing.
+//
+// EXISTENCE IN THE MANIFEST IS NOT CHECKED, deliberately. Entries come and go
+// between releases, and an app installed from an entry that is later removed
+// must keep working — a slug that resolves to nothing degrades to "inject
+// nothing", which is the safe direction. Refusing at write time would trade
+// that for app creation failing on catalogue drift, and would not make the
+// stored value any safer than the shape check already does.
+function validateCatalogSlug(v) {
+  if (typeof v !== 'string' || v === 'constructor' || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(v)) {
+    throw new AppError(
+      'catalog_slug must be a catalogue entry slug: lowercase letters, digits and dashes, ' +
+      "starting with a letter or digit (max 64 chars) — e.g. 'bookstack'",
+      400, 'VALIDATION',
+    );
+  }
+  return v;
+}
+
 /**
  * Returns a list of apps whose github_url is missing, malformed, or uses a
  * known placeholder owner. Used by the admin triage page to surface rows
@@ -443,7 +486,7 @@ router.post('/', requireAuth, auditMiddleware('app-create'), async (req, res) =>
     throw new AppError('You do not have permission to create apps.', 403, 'FORBIDDEN');
   }
 
-  const { name, slug, domain, description, category, source_type, github_url, branch, github_token, max_ram_mb, max_cpu_percent, visibility, public_access, image_ref, container_port, health_path } = req.body;
+  const { name, slug, domain, description, category, source_type, github_url, branch, github_token, max_ram_mb, max_cpu_percent, visibility, public_access, image_ref, container_port, health_path, catalog_slug } = req.body;
 
   if (!name || !slug) throw new AppError('Name and slug are required', 400, 'VALIDATION');
   if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) throw new AppError('Slug must be lowercase alphanumeric with dashes', 400, 'VALIDATION');
@@ -512,6 +555,21 @@ router.post('/', requireAuth, auditMiddleware('app-create'), async (req, res) =>
     ? null
     : validateHealthPath(health_path);
 
+  // v2.65.0: the catalogue link. Set once, at install, and never again — there
+  // is deliberately no catalog_slug branch in PUT below, and the field is
+  // absent from that route's destructuring so a later edit cannot introduce one
+  // by accident. This is the same reasoning that ruled out matching an app back
+  // to its catalogue entry by github_url or image_ref: those are editable, and
+  // repointing one would repoint which entry's env var names a database
+  // credential is injected under. An immutable link cannot be steered.
+  //
+  // Empty string and null both mean "not from the catalogue" and store NULL;
+  // anything else must be a real slug shape or the request is refused, rather
+  // than a junk value being written for the deployer to look up later.
+  const catalogSlugValue = catalog_slug === undefined || catalog_slug === null || catalog_slug === ''
+    ? null
+    : validateCatalogSlug(catalog_slug);
+
   const db = getDb();
 
   // v2.52.0: the platform policy gate, on CREATE as well as on PUT. A policy
@@ -551,9 +609,9 @@ router.post('/', requireAuth, auditMiddleware('app-create'), async (req, res) =>
   const appDomain = domain || null;
 
   const result = db.prepare(`
-    INSERT INTO apps (name, slug, slot, domain, description, category, source_type, github_url, branch, github_token_encrypted, resource_limits, created_by, image_ref, container_port, health_path)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(name, slug, slot, appDomain, description || null, category || null, source_type || 'github', github_url || null, branch || 'main', tokenEncrypted, resourceLimits, req.user.id, imageRefValue, containerPortValue, healthPathValue);
+    INSERT INTO apps (name, slug, slot, domain, description, category, source_type, github_url, branch, github_token_encrypted, resource_limits, created_by, image_ref, container_port, health_path, catalog_slug)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(name, slug, slot, appDomain, description || null, category || null, source_type || 'github', github_url || null, branch || 'main', tokenEncrypted, resourceLimits, req.user.id, imageRefValue, containerPortValue, healthPathValue, catalogSlugValue);
 
   const appId = result.lastInsertRowid;
 
@@ -1434,6 +1492,35 @@ router.delete('/:slug', requireAppAccess, auditMiddleware('app-delete'), async (
     await stopApp(slug, 'sandbox').catch(() => {});
   } catch (e) {}
 
+  // v2.65.0: drop the app's managed databases BEFORE the row goes away.
+  //
+  // Migration 085's foreign key cascades the managed_databases ROW when apps is
+  // deleted, and that is the whole of what SQLite can do — it cannot reach into
+  // Postgres or MariaDB. So a delete that skipped this would leave the database
+  // itself and a live login role standing, holding the deleted app's data, with
+  // nothing left in AppCrane pointing at either and anyone who still has the
+  // credentials able to open it. The cascade makes the leak INVISIBLE rather
+  // than loud, which is why this runs first rather than being left to a sweeper.
+  //
+  // After stopApp on purpose: the engine-side drop is what has to survive a
+  // container that has not finished shutting down (managedDb uses
+  // DROP DATABASE ... WITH (FORCE) for exactly that), but there is no reason to
+  // race it when stopping first is free.
+  //
+  // Called plainly, not wrapped: deprovisionApp catches per row and logs, and
+  // returns {requested, dropped} counts rather than throwing, so a database
+  // server that is down leaves a warning in the log and a deletable app. Read
+  // rather than assumed — server/services/managedDb.js, deprovisionApp().
+  // The counts are safe to return: they are integers, never a name or a secret.
+  const { deprovisionApp } = await import('../services/managedDb.js');
+  const dbDrop = await deprovisionApp(req.app.id);
+  if (dbDrop.requested !== dbDrop.dropped) {
+    log.warn(
+      `App delete '${slug}': ${dbDrop.requested - dbDrop.dropped} of ${dbDrop.requested} managed ` +
+      'databases could not be dropped — they are now orphaned in the engine',
+    );
+  }
+
   // Delete related records first to avoid FK constraint failures
   const appId = req.app.id;
   db.transaction(() => {
@@ -1455,7 +1542,10 @@ router.delete('/:slug', requireAppAccess, auditMiddleware('app-delete'), async (
   // Update Caddy config (removes app routes)
   await reloadCaddy().catch(e => log.warn(`Caddy reload after delete: ${e.message}`));
 
-  res.json({ message: `App '${slug}' deleted` });
+  res.json({
+    message: `App '${slug}' deleted`,
+    managed_databases: dbDrop,
+  });
 });
 
 /**

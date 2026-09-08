@@ -226,6 +226,76 @@ function requireAppRoleTier(user, app, { manage }) {
 }
 
 /**
+ * The MCP equivalent of the app-USER tier that guards /api/apps/:slug/database
+ * on the HTTP side (server/middleware/auth.js requireAppUser): an explicit
+ * `app_users` assignment is required, and it is authoritative for EVERY role
+ * INCLUDING platform_admin.
+ *
+ * Deliberately NOT isAppAdmin(), which returns true for any AppCrane global
+ * admin. That difference is the entire v2.39.0 guardrail: what sits behind this
+ * tier is the app's own data and credentials — env var plaintext, backups, and
+ * now a live database login — as distinct from platform administration. An
+ * admin reaches it by assigning themselves, which is an audited, attributable
+ * act, rather than by holding a platform key.
+ *
+ * It has to be repeated here rather than inherited, because an MCP caller
+ * authenticates as an ordinary user against the same identities. If this gate
+ * were the looser one, the MCP surface would be a documented way around a
+ * guardrail the HTTP surface enforces — the escalation is not in the tool, it
+ * is in the two surfaces disagreeing.
+ *
+ * isAdmin() rather than a role literal so platform_admin lands in the
+ * actionable branch and not the flat refusal (scripts/check-role-patterns.sh).
+ */
+function requireAppUserTier(user, app, action) {
+  const assigned = getDb()
+    .prepare('SELECT 1 FROM app_users WHERE app_id = ? AND user_id = ?')
+    .get(app.id, user.id);
+  if (assigned) return;
+  if (isAdmin(user)) {
+    throw new Error(
+      `Forbidden: admin access does not include an app's own data and credentials. ` +
+      `Assign yourself to '${app.slug}' first (appcrane_grant_app_access), then ${action}.`
+    );
+  }
+  throw new Error(`Forbidden: you are not assigned to ${app.slug}, so you cannot ${action}.`);
+}
+
+/**
+ * The managed-database engine, loaded on first use rather than at import —
+ * the same shape server/routes/managedDb.js uses, and this file's existing
+ * convention for service dependencies (see the backupScheduler imports below).
+ *
+ * A failure is not cached: an instance whose engine module is unavailable fails
+ * these two tools and nothing else, and a later call retries.
+ */
+let managedDbPromise = null;
+async function managedDbModule() {
+  if (!managedDbPromise) {
+    managedDbPromise = import('./managedDb.js').catch((e) => {
+      managedDbPromise = null;
+      throw new Error(`Managed databases are not available on this instance: ${e.message}`);
+    });
+  }
+  return managedDbPromise;
+}
+
+/**
+ * Test seam, mirroring routes/managedDb.js __setEngineForTests. Not used by
+ * production code.
+ *
+ * Not a convenience: provision() calls ensureServer(), which docker-runs a real
+ * Postgres or MariaDB container and holds a port. The double lets the two
+ * things these tools are responsible for — the authorization tier, and never
+ * putting the credential in a tool result — be tested without that.
+ * test/managed-db-mcp.test.js also asserts the real module still exports
+ * everything called here, so the double cannot drift away from the engine.
+ */
+export function __setManagedDbForTests(mod) {
+  managedDbPromise = mod ? Promise.resolve(mod) : null;
+}
+
+/**
  * Whitelist for container exec paths. Only /app and /data are reachable —
  * everything else (/etc, /root, /proc, the host bind-mounts) is off-limits
  * for read tools so a curious agent can't grep secrets out of the OS image.
@@ -4303,7 +4373,183 @@ const TOOLS = [
       };
     },
   },
+
+  // ── Managed databases (v2.64.0) ─────────────────────────────────────────
+  //
+  // 54 of the 64 catalogue entries need an external database and 503 without
+  // one — linuxserver/bookstack's own docs open by saying so — which meant a
+  // one-click install produced a blank page. The platform now runs ONE shared
+  // Postgres and ONE shared MariaDB and hands each app its own database and its
+  // own login inside them (server/services/managedDb.js).
+  //
+  // These two tools exist because an AGENT hits exactly the 503 a human does
+  // and, until now, had no way out of it: the capability existed only on the
+  // HTTP surface and in the dashboard. An agent that cannot provision can only
+  // report the failure.
+  //
+  // TWO THINGS ARE NON-NEGOTIABLE HERE, and both are about the credential:
+  //
+  //   1. NO TOOL RETURNS THE PASSWORD. provision() resolves to the plaintext
+  //      password AND a URL with it embedded — deliberately, because that is
+  //      the deployer's input. A tool result is transcript; a transcript is
+  //      forwarded, logged and pasted. Both handlers rebuild their response
+  //      from listForApp(), which decrypts nothing, and the provision handler
+  //      never binds provision()'s return value to a variable.
+  //   2. NO ENGINE MESSAGE IS ECHOED. runAdminSql throws with the failing
+  //      command's output, and the failing command is `CREATE ROLE … LOGIN
+  //      PASSWORD '<pw>'`. Passing err.message through would be a straight line
+  //      from "the database hiccuped" to "the password is in the transcript".
+  //      Nothing logs it either — that would only move the leak to disk.
+  {
+    name: 'appcrane_provision_database',
+    description:
+      'Create a real managed database for an app: one dedicated database plus its own login inside the platform\'s shared Postgres or MariaDB server. '
+      + 'Reach for this when an app 503s, restarts in a loop, or logs a connection error against a database nobody ever created — most catalogue apps '
+      + '(BookStack, Ghost, Akaunting, Gitea and ~50 more) ship no database of their own and cannot boot without one. '
+      + 'THIS CREATES REAL INFRASTRUCTURE: it starts the shared engine container if it is not already running, then creates a database and a login role that '
+      + 'exist until somebody deletes them. Idempotent per app+engine — a second call returns the existing database rather than making another, and never rotates '
+      + 'the password out from under a running container — so retrying after a timeout is safe. '
+      + 'IT DOES NOT RETURN THE PASSWORD, and no AppCrane tool does. The credential is generated server-side, stored encrypted, and injected into the container\'s '
+      + 'environment AT DEPLOY TIME under the variable names that app\'s own image reads. Do not ask for it, do not try to reconstruct it, and do not tell the user '
+      + 'to paste it anywhere — no supported workflow needs a human or an agent to hold it. '
+      + 'WHAT THIS DOES NOT DO: it does not restart or redeploy the app, so a container that is already running sees nothing change — call appcrane_deploy afterwards '
+      + 'or the app will keep failing in exactly the same way. It does not create or migrate a schema; the app does that on its first successful boot. It does not '
+      + 'delete anything, and deprovisioning is deliberately absent from the MCP surface — dropping a database is unrecoverable data loss and belongs to a human in '
+      + 'the dashboard, not to an agent recovering from a 503. '
+      + 'You must name the engine: pass the one the image documents (BookStack and most linuxserver.io images want mariadb; Postgres-native apps want postgres). '
+      + 'Guessing wrong is not destructive but does not help either — it leaves an unused empty database and the app keeps 503ing. An app may hold one of each. '
+      + 'ACCESS: requires an app-user assignment on that app, the same tier as env vars and backups. Being an AppCrane admin is NOT enough on its own — assign '
+      + 'yourself with appcrane_grant_app_access first, which is the audited step the dashboard also requires.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        slug: { type: 'string', description: 'App slug the database belongs to, e.g. "bookstack".' },
+        engine: {
+          type: 'string',
+          enum: ['postgres', 'mariadb'],
+          description: 'Which shared engine to create the database in. Required — an app may hold one of each, and this is not guessed for you.',
+        },
+      },
+      required: ['slug', 'engine'],
+      additionalProperties: false,
+    },
+    // 'any' rather than 'app_admin': the HTTP route this mirrors accepts any
+    // ASSIGNED app user, and app_admin would hide the tool from exactly those
+    // callers (they hold an app_users row, not an admin/owner role). The real
+    // gate is requireAppUserTier in the handler, per-slug, which is stricter
+    // than app_admin in the direction that matters — an unassigned platform
+    // admin is refused.
+    requiredRole: 'any',
+    handler: async (user, args) => {
+      const svc = await managedDbModule();
+      const engine = String(args.engine || '').toLowerCase();
+      // Validated against the engine's own list, not a copy of it — a second
+      // allowlist in this file is a second thing to keep in sync with the
+      // module that turns the string into container and SQL identifiers.
+      if (!svc.SUPPORTED_ENGINES.includes(engine)) {
+        throw new Error(`engine must be one of: ${svc.SUPPORTED_ENGINES.join(', ')} — got ${JSON.stringify(args.engine)}`);
+      }
+
+      const app = getAppForUser(user, args.slug);
+      requireAppUserTier(user, app, 'provision a database for it');
+
+      // tenant stays null: namesForScope() hashes a tenant into the database
+      // and role names, but there is no authorization model for one yet, and a
+      // tenant dimension without one is an IDOR with a nicer name. The HTTP
+      // route refuses a client-supplied tenant for the same reason; here the
+      // schema simply does not accept the field.
+      const scope = { appId: app.id, tenant: null };
+      try {
+        // RETURN VALUE DELIBERATELY DISCARDED — never bind it. It resolves to
+        // the plaintext password and a URL containing it.
+        await svc.provision(scope, engine);
+      } catch (err) {
+        // Fixed text. See the note above the tool: err.message can carry the
+        // CREATE ROLE statement, password included.
+        throw new Error(
+          `The managed database engine failed to provision a ${engine} database for ${app.slug}. `
+          + 'The engine\'s own message is withheld deliberately: the statement that fails can contain the generated '
+          + 'credential. An operator can read it in the server log. Nothing was left half-created — the engine rolls '
+          + 'back its own row and role on failure — so this is safe to retry once the engine is healthy.'
+        );
+      }
+
+      const databases = svc.listForApp(app.id).map((row) => publicManagedDbView(row, app));
+      return {
+        app: app.slug,
+        database: databases.find((d) => d.engine === engine) || null,
+        databases,
+        next: `Ready, but the running container does not have it yet. Deploy ${app.slug} (appcrane_deploy) so the credential is injected into its environment.`,
+        note: 'No password is returned here or anywhere else — it is stored encrypted and injected at deploy time.',
+      };
+    },
+  },
+  {
+    name: 'appcrane_list_databases',
+    description:
+      'What managed databases an app already has: engine, database name, login name and when it was created. '
+      + 'Call it before appcrane_provision_database so you do not ask for something that exists, and when debugging a database-related failure to settle which '
+      + 'fault you are looking at — "this app has no database" and "this app has a database it cannot reach" are different problems with different fixes, and they '
+      + 'look identical from the app\'s error message. '
+      + 'AN EMPTY LIST IS AN ANSWER, NOT AN ERROR: it means no managed database has been provisioned, which is the correct and expected state for an app that '
+      + 'brings its own database or needs none. Do not read it as a failure. '
+      + 'NEVER returns a password, a connection URL, a host or a port — no AppCrane surface hands the credential out, because the deployer injects it into the '
+      + 'container environment and nothing asks a human or an agent to hold it. What is here is identity, not access. '
+      + 'It reports what AppCrane has on file; it does not connect to the engine, so it cannot tell you whether the server is up or whether the app\'s own '
+      + 'connection is working. ACCESS: requires access to the app.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        slug: { type: 'string', description: 'App slug, e.g. "bookstack".' },
+      },
+      required: ['slug'],
+      additionalProperties: false,
+    },
+    // The read mirrors the app-ACCESS tier of GET /api/apps/:slug/database, one
+    // step below the write, exactly as backups.js grades its own pair: the
+    // response is identifiers and no credential, so it is app info rather than
+    // app secrets. getAppForUser is this file's app-access gate.
+    requiredRole: 'any',
+    readOnly: true,
+    handler: async (user, args) => {
+      const svc = await managedDbModule();
+      const app = getAppForUser(user, args.slug);
+      const databases = svc.listForApp(app.id).map((row) => publicManagedDbView(row, app));
+      return {
+        app: app.slug,
+        count: databases.length,
+        databases,
+        engines: svc.SUPPORTED_ENGINES,
+        note: databases.length
+          ? 'Credentials are stored encrypted and injected into the container at deploy time; they are deliberately not returned here.'
+          : `No managed database is provisioned for ${app.slug}. If it needs one, appcrane_provision_database creates it.`,
+      };
+    },
+  },
 ];
+
+/**
+ * A managed_databases row as an agent may see it.
+ *
+ * Built field by field from an explicit list rather than by spreading the row,
+ * for the same reason routes/managedDb.js publicView() is: listForApp() already
+ * selects only non-secret columns, but this should not be the thing that breaks
+ * if that SELECT ever becomes `SELECT *`. password_enc is one careless edit away
+ * from a tool result.
+ *
+ * THERE IS NO PASSWORD FIELD AND NONE SHOULD BE ADDED, plaintext or encrypted.
+ * Host and port are omitted for the same reason they are not needed: the deploy
+ * injects them.
+ */
+function publicManagedDbView(row, app) {
+  return {
+    engine: row.engine,
+    database: row.db_name,
+    username: row.db_user,
+    created_at: row.created_at,
+    scope: { app: app.slug, tenant: row.tenant || null },
+  };
+}
 
 // v2.11.0: AWS-friendly naming. The catalog the LLM sees presents the
 // sandbox/production dimension as `stage` (Copilot/eb vocabulary) instead of

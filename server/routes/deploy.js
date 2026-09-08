@@ -257,6 +257,25 @@ router.post('/:slug/restart/:env', requireAppAccess, auditMiddleware('restart'),
   if (decryptFailures.length) {
     log.warn(`Restart ${containerName}: ${decryptFailures.length} env var(s) failed to decrypt (ENCRYPTION_KEY mismatch?), omitted: ${decryptFailures.join(', ')}`);
   }
+
+  // v2.65.0: managed database credentials, same rule as the deploy path — the
+  // app's catalogue entry names the variables, and an env var the app itself
+  // carries wins over the injected credential. Restart rebuilds the container's
+  // whole environment from scratch, so skipping this here would silently strip
+  // the database credentials off a restarted app that had them at deploy.
+  // Deliberately placed BEFORE the CRANE_URL/DATA_DIR block below for the same
+  // reason as in the deployer: those are platform vars that always win.
+  {
+    const { applyManagedDbEnv } = await import('../services/deployer.js');
+    const mdbEnv = applyManagedDbEnv(app, runtimeEnvVars, decryptFailures);
+    if (mdbEnv.injected.length) {
+      // Key names only. The values include a database password.
+      log.info(`Restart ${containerName}: injected managed ${mdbEnv.engine} database var(s): ${mdbEnv.injected.join(', ')}`);
+    }
+    if (mdbEnv.deferred.length) {
+      log.info(`Restart ${containerName}: kept the app's own value for ${mdbEnv.deferred.join(', ')} over the managed ${mdbEnv.engine} credential`);
+    }
+  }
   const cranePort = process.env.PORT || 5001;
   const craneUrl = process.env.CRANE_DOMAIN ? `https://${process.env.CRANE_DOMAIN}` : `http://localhost:${cranePort}`;
   // APP_BASE_PATH is intentionally NOT set at runtime — see deployer.js and

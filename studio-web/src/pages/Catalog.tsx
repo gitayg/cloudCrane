@@ -883,7 +883,9 @@ function InstallDialog({ entry, onClose, onCreated }: {
   // the 409 branch in submit().
   const [takenSlug, setTakenSlug] = useState<string | null>(null)
   const [warning, setWarning] = useState<string | null>(null)
-  const [done, setDone] = useState<{ slug: string; name: string; deploying: boolean; injectedEnv: string[] } | null>(null)
+  const [done, setDone] = useState<
+    { slug: string; name: string; deploying: boolean; provisioned: boolean; injectedEnv: string[] } | null
+  >(null)
 
   const navigate = useNavigate()
   const { addTab } = useAppTabs()
@@ -960,7 +962,23 @@ function InstallDialog({ entry, onClose, onCreated }: {
     setError(null)
     setTakenSlug(null)
     setWarning(null)
+    // WHICH CATALOGUE ENTRY THIS APP CAME FROM, recorded on the app row.
+    //
+    // Nothing else on that row identifies the entry, and the deployer needs the
+    // entry to know WHICH ENVIRONMENT VARIABLE NAMES to inject the database
+    // credential under: BookStack reads DB_HOST/DB_USER/DB_PASS/DB_DATABASE,
+    // other entries read DATABASE_URL or POSTGRES_*, and the manifest's
+    // `needs.env` is the only record of which. Matching back by github_url or
+    // image_ref instead was considered and rejected — both stay editable after
+    // creation, and a wrong match injects another app's variable names.
+    //
+    // `entry.slug` is the CATALOGUE entry's slug, deliberately not the `slug`
+    // state: that one is the app's own slug and the operator is free to change
+    // it in this dialog. Omitted rather than sent blank when the manifest entry
+    // has none, so the column stays null — "not from the catalogue" — instead of
+    // holding an empty string that looks like a match.
     const body: Record<string, unknown> = { name: name.trim(), slug }
+    if (typeof entry.slug === 'string' && entry.slug.trim()) body.catalog_slug = entry.slug.trim()
     if (source === 'github') {
       body.source_type = 'github'
       body.github_url = repoUrl(entry.repo)
@@ -985,7 +1003,16 @@ function InstallDialog({ entry, onClose, onCreated }: {
         body: JSON.stringify(body),
       })
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      // STEP 1 OF 3 — creating the app. Which of the three steps failed decides
+      // what the operator does next, so each of them says which one it was: a
+      // bare message here would send someone to Manage looking for an app that
+      // was never created. The request did not reach the server, so there is no
+      // app row, no database and no deploy, and nothing to clean up.
+      setError(
+        'Creating the app failed — AppCrane could not be reached: ' +
+        (err instanceof Error ? err.message : String(err)) +
+        '. Nothing was created, so Deploy can be pressed again as-is.',
+      )
       setSubmitting(false)
       return
     }
@@ -1000,15 +1027,33 @@ function InstallDialog({ entry, onClose, onCreated }: {
       // stored credential is proven bad and the session should be cleared.
       // Re-issuing is safe: a 401 comes from the auth middleware, before the
       // route body runs, so the request above created nothing to duplicate.
-      try { await adminApi.post('/api/apps', body) }
-      catch (err) { setError(err instanceof Error ? err.message : String(err)) }
+      try {
+        await adminApi.post('/api/apps', body)
+        // It went through on the retry, so the app EXISTS — but this is the
+        // re-auth path, not the happy path: the database and the deploy below
+        // never ran. Returning silently here would leave someone believing the
+        // button did nothing while an app sat undeployed under Manage.
+        setWarning(
+          'The app was created on a retry after a sign-in check, but its database was NOT provisioned and its ' +
+          'first deploy was NOT started. Open it under Manage to finish setting it up.',
+        )
+        setDone({ slug, name: name.trim(), deploying: false, provisioned: false, injectedEnv: [] })
+      } catch (err) {
+        setError('Creating the app failed: ' + (err instanceof Error ? err.message : String(err)))
+      }
       setSubmitting(false)
       return
     }
     if (!res.ok) {
       const payload = await res.json().catch(() => ({}))
       const msg = (payload as { error?: { message?: string } })?.error?.message
-      setError(msg || `HTTP ${res.status}`)
+      // Step 1 of 3 again. The app row was not written, so no database was
+      // provisioned and no deploy was started — worth saying, because the same
+      // sentence after step 2 or step 3 would describe a very different state.
+      setError(
+        'Creating the app failed: ' + (msg || `HTTP ${res.status}`) +
+        '. No database was provisioned and no deploy was started.',
+      )
       setSubmitting(false)
       return
     }
@@ -1042,20 +1087,37 @@ function InstallDialog({ entry, onClose, onCreated }: {
     // reason as the external path below: a container that starts without its
     // database is exactly the blank page this dialog exists to prevent.
     let injectedEnv: string[] = []
+    // '' = no managed database was provisioned. Carries the engine label as well
+    // as the fact, so the deploy failure below can name it without reaching back
+    // through `need` and needing a non-null assertion to do it.
+    let provisionedEngine = ''
     if (need && dbMode === 'provision' && need.engine) {
       try {
+        // `injected_env` is read defensively because the provisioning route is
+        // not obliged to return it — it merely names the variables the deploy
+        // will set, so this page can show them. Its absence means "this page
+        // cannot list them", never "nothing was provisioned"; that distinction
+        // is what provisionedEngine carries. There is NO password in this
+        // response by design, and nothing here asks for one.
         const r = await adminApi.post<{ injected_env?: string[] }>(
           '/api/apps/' + slug + '/database', { engine: need.engine },
         )
-        injectedEnv = Array.isArray(r?.injected_env) ? r.injected_env : []
+        injectedEnv = Array.isArray(r?.injected_env)
+          ? r.injected_env.filter((v): v is string => typeof v === 'string' && v.trim() !== '')
+          : []
+        provisionedEngine = need.engineLabel
       } catch (err) {
+        // STEP 2 OF 3. The app row exists and the database does not — a state
+        // distinct from either neighbour, because the retry is of the DATABASE,
+        // not of the app: pressing Deploy again from this dialog would create a
+        // second app under a second slug.
         setWarning(
           'The app was created, but provisioning its ' + need.engineLabel + ' database failed: ' +
           (err instanceof Error ? err.message : String(err)) +
           '. The first deploy was NOT started, because ' + entry.name + ' cannot serve a page without a ' +
           'database. Retry from Manage, or deploy it against a database you run yourself.',
         )
-        setDone({ slug, name: name.trim(), deploying: false, injectedEnv: [] })
+        setDone({ slug, name: name.trim(), deploying: false, provisioned: false, injectedEnv: [] })
         setSubmitting(false)
         return
       }
@@ -1087,7 +1149,7 @@ function InstallDialog({ entry, onClose, onCreated }: {
           '. The first deploy was NOT started, because ' + entry.name + ' cannot serve a page without a ' +
           'database. Set the variables under Manage → Environment, then deploy from there.',
         )
-        setDone({ slug, name: name.trim(), deploying: false, injectedEnv })
+        setDone({ slug, name: name.trim(), deploying: false, provisioned: false, injectedEnv })
         setSubmitting(false)
         return
       }
@@ -1103,13 +1165,18 @@ function InstallDialog({ entry, onClose, onCreated }: {
       await adminApi.post('/api/apps/' + slug + '/deploy/production', {})
       deploying = true
     } catch (err) {
+      // STEP 3 OF 3. Both earlier steps succeeded, so this is the one failure of
+      // the three where nothing needs redoing — naming the step is what stops
+      // someone re-provisioning a database that already exists.
       setWarning(
-        'The app was created, but starting its first deploy failed: ' +
+        'The app was created' +
+        (provisionedEngine ? ' and its ' + provisionedEngine + ' database is provisioned' : '') +
+        ', but starting its first deploy failed: ' +
         (err instanceof Error ? err.message : String(err)) +
-        '. Open it under Manage and deploy from there.',
+        '. Open it under Manage and deploy from there — nothing needs setting up again.',
       )
     }
-    setDone({ slug, name: name.trim(), deploying, injectedEnv })
+    setDone({ slug, name: name.trim(), deploying, provisioned: provisionedEngine !== '', injectedEnv })
     setSubmitting(false)
   }
 
@@ -1149,11 +1216,14 @@ function InstallDialog({ entry, onClose, onCreated }: {
                       : 'This host is cloning and building the repo, which can take a few minutes.'} The URL answers
                       "Not deployed" until it finishes — watch progress under Manage.</>
                   : <> The deploy did not start; open it under Manage and run the first deploy there.</>}
-                {done.injectedEnv.length > 0 && (
+                {done.provisioned && (
                   <div style={{ marginTop: 8 }}>
-                    Its database is provisioned. The deploy injects the connection as{' '}
-                    <code style={{ fontFamily: 'monospace' }}>{done.injectedEnv.join(', ')}</code> — the password
-                    stays on the server, encrypted.
+                    Its database is provisioned.{' '}
+                    {done.injectedEnv.length > 0
+                      ? <>The deploy injects the connection as{' '}
+                          <code style={{ fontFamily: 'monospace' }}>{done.injectedEnv.join(', ')}</code>.</>
+                      : <>The deploy injects the connection under the variable names this app reads.</>}
+                    {' '}The password stays on the server, encrypted — it was never sent to this page.
                   </div>
                 )}
               </div>
