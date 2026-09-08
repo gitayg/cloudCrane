@@ -315,9 +315,41 @@ test('PUT cannot change the link once it is set', async () => {
     name: 'Fixed', slug, github_url: 'https://github.com/o/r', catalog_slug: 'bookstack',
   });
   const r = await req(admin, 'PUT', `/api/apps/${slug}`, { catalog_slug: 'nextcloud', description: 'edited' });
-  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.status, 409, JSON.stringify(r.body));
+  assert.equal(r.body?.error?.code, 'CATALOG_SLUG_IMMUTABLE');
   assert.equal(rowFor(slug).catalog_slug, 'bookstack',
     'PUT repointed the catalogue link — that is the editable-field hole the design rejected');
+});
+
+test('PUT CAN fill the link when it is still empty, so an older app is not stranded', async () => {
+  // v2.65.1. Write-once was implemented as write-never, which stranded every
+  // catalogue app created before the column existed: NULL slug means the deployer
+  // cannot resolve the entry's env var names, so it injects nothing and the app
+  // 503s against a database nobody told it about. There was no way out except
+  // deleting and re-creating the app.
+  //
+  // Filling a NULL is a migration; changing a value is a repoint. Only the second
+  // one is the hole the design rejected.
+  const slug = nextSlug('adopt');
+  await req(admin, 'POST', '/api/apps', { name: 'Older', slug, github_url: 'https://github.com/o/r' });
+  assert.equal(rowFor(slug).catalog_slug, null, 'precondition: the app starts with no link');
+
+  const r = await req(admin, 'PUT', `/api/apps/${slug}`, { catalog_slug: 'bookstack' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(rowFor(slug).catalog_slug, 'bookstack');
+
+  // and it is immutable from then on — adoption must not become a back door
+  const again = await req(admin, 'PUT', `/api/apps/${slug}`, { catalog_slug: 'nextcloud' });
+  assert.equal(again.status, 409, 'a filled link must be immutable, even one filled by adoption');
+  assert.equal(rowFor(slug).catalog_slug, 'bookstack');
+});
+
+test('adoption still validates the slug shape', async () => {
+  const slug = nextSlug('adoptbad');
+  await req(admin, 'POST', '/api/apps', { name: 'Older2', slug, github_url: 'https://github.com/o/r' });
+  const r = await req(admin, 'PUT', `/api/apps/${slug}`, { catalog_slug: 'BookStack' });
+  assert.equal(r.status, 400, 'an invalid slug must be refused on adoption exactly as on create');
+  assert.equal(rowFor(slug).catalog_slug, null);
 });
 
 // ---------------------------------------------------------------------------
@@ -420,4 +452,51 @@ test('a database whose engine cannot be reached does not make the app undeletabl
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.deepEqual(r.body.managed_databases, { requested: 1, dropped: 0 });
   assert.equal(db.prepare('SELECT COUNT(*) n FROM apps WHERE id = ?').get(appId).n, 0);
+});
+
+// ---------------------------------------------------------------------------
+// The delete that did not delete
+//
+// Reported from a live instance: deleting an app left its slug taken, so
+// re-installing the same catalogue app answered 409 and pushed the user to
+// bookstack-2, bookstack-3, bookstack-4. The delete handler clears related rows
+// by hand, and that list had fallen behind the schema: app_skills and
+// email_queue reference apps(id) with NO cascade and were absent from it, so a
+// single row in either raised a foreign-key error, rolled the whole transaction
+// back, and the app survived its own deletion.
+// ---------------------------------------------------------------------------
+
+test('no table can make an app undeletable', () => {
+  // A structural check, not a scenario: the next table to reference apps
+  // without an ON DELETE action will fail HERE, when it is added, rather than in
+  // production as an app that survives its own deletion and keeps its slug.
+  //
+  // Three things make a reference safe, and an earlier version of this test only
+  // knew about the first — which made it accuse two innocent tables:
+  //   ON DELETE CASCADE     the row goes with the app
+  //   ON DELETE SET NULL    the row stays, detached (email_queue keeps sent mail)
+  //   cleared by the handler explicitly, before `DELETE FROM apps`
+  // It must also look at references to apps(SLUG), not only apps(id):
+  // app_skills cascades on slug and was wrongly reported as unprotected.
+  const dir = new URL('../server/migrations/', import.meta.url);
+  const refs = new Map();
+  for (const f of readdirSync(dir).filter((x) => x.endsWith('.sql')).sort()) {
+    const sql = readFileSync(new URL(f, dir), 'utf8');
+    for (const m of sql.matchAll(/CREATE TABLE (?:IF NOT EXISTS )?([a-z_]+)\s*\(([\s\S]*?)\n\);/g)) {
+      const [, table, body] = m;
+      if (table.endsWith('_new')) continue;
+      const fk = body.match(/REFERENCES\s+apps\s*\(\s*(?:id|slug)\s*\)([^,\n]*)/i);
+      if (!fk) continue;
+      refs.set(table, /ON DELETE (CASCADE|SET NULL)/i.test(fk[1]));
+    }
+  }
+  assert.ok(refs.size >= 20, `parsed only ${refs.size} tables referencing apps — the regex is stale`);
+
+  const handler = readFileSync(new URL('../server/routes/apps.js', import.meta.url), 'utf8');
+  const cleared = new Set([...handler.matchAll(/DELETE FROM ([a-z_]+) WHERE app_(?:id|slug)/g)].map((m) => m[1]));
+
+  const blocking = [...refs].filter(([t, safe]) => !safe && !cleared.has(t)).map(([t]) => t);
+  assert.deepEqual(blocking, [],
+    'these tables reference apps with no ON DELETE action and are not cleared by the delete handler, '
+    + `so a row in any of them makes an app undeletable: ${blocking.join(', ')}`);
 });

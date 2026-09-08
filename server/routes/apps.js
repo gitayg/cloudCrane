@@ -555,13 +555,16 @@ router.post('/', requireAuth, auditMiddleware('app-create'), async (req, res) =>
     ? null
     : validateHealthPath(health_path);
 
-  // v2.65.0: the catalogue link. Set once, at install, and never again — there
-  // is deliberately no catalog_slug branch in PUT below, and the field is
-  // absent from that route's destructuring so a later edit cannot introduce one
-  // by accident. This is the same reasoning that ruled out matching an app back
-  // to its catalogue entry by github_url or image_ref: those are editable, and
-  // repointing one would repoint which entry's env var names a database
-  // credential is injected under. An immutable link cannot be steered.
+  // v2.65.0: the catalogue link. WRITE-ONCE, not write-never — see PUT below.
+  // The property that matters is that an app already linked to an entry cannot
+  // be REPOINTED at a different one: repointing changes which entry's env var
+  // names a database credential is injected under. That is the same reasoning
+  // that ruled out matching by github_url or image_ref, which are editable.
+  //
+  // v2.65.1: it was write-NEVER, and that stranded every catalogue app created
+  // before this column existed — NULL slug, no mapping, no injection, and no way
+  // to supply one short of deleting and re-creating the app. Filling a NULL is
+  // not steering anything, so PUT accepts it exactly once.
   //
   // Empty string and null both mean "not from the catalogue" and store NULL;
   // anything else must be a real slug shape or the request is refused, rather
@@ -826,6 +829,25 @@ router.put('/:slug', requireAppAccess, auditMiddleware('app-update'), async (req
   const app = req.app;
   const { name, domain, description, category, source_type, github_url, branch, github_token, max_ram_mb, max_cpu_percent, public_access, visibility, image_retention, frame_ancestors, auth_mode, auth_bypass_paths, email_from_name, ingress_type, public_port, sandbox_public_port, data_plane_port, image_ref, container_port, health_path } = req.body;
 
+  // Adopt an app into the catalogue: allowed ONLY while catalog_slug is NULL.
+  // An app created before 086 has no link, so the deployer cannot resolve which
+  // env var names its image reads and injects nothing — the app deploys and then
+  // 503s against a database it was never told about. Filling that in is a
+  // migration, not a repoint; changing an existing value is a repoint, and stays
+  // refused.
+  let adoptCatalogSlug;
+  if (req.body.catalog_slug !== undefined) {
+    if (app.catalog_slug) {
+      throw new AppError(
+        `This app is already linked to catalogue entry '${app.catalog_slug}'. The link is set once and `
+        + 'cannot be changed, because it decides which entry\'s env var names a database credential is '
+        + 'injected under.',
+        409, 'CATALOG_SLUG_IMMUTABLE',
+      );
+    }
+    adoptCatalogSlug = validateCatalogSlug(req.body.catalog_slug);
+  }
+
   // Configurable RBAC: changes to repo-related fields gated by code.modify_repo_settings.
   // Other fields (name, description, category, visibility, etc.) stay open to any
   // app-assigned user via requireAppAccess.
@@ -925,6 +947,7 @@ router.put('/:slug', requireAppAccess, auditMiddleware('app-update'), async (req
   }
 
   const updates = {};
+  if (adoptCatalogSlug !== undefined) updates.catalog_slug = adoptCatalogSlug;
   if (name !== undefined) updates.name = name;
   if (domain !== undefined) {
     // v2.10.0: domain = a custom passthrough domain (served at root, no SSO,
@@ -1327,7 +1350,7 @@ router.put('/:slug', requireAppAccess, auditMiddleware('app-update'), async (req
     return res.json({ app: { ...app, auth_mode: effectiveAuthMode(app.auth_mode), ...ingressFields(app) }, message: 'No changes' });
   }
 
-  const ALLOWED_APP_COLS = new Set(['name','domain','description','category','source_type','github_url','branch','public_access','visibility','github_token_encrypted','resource_limits','runtime','image_retention','frame_ancestors','auth_mode','auth_bypass_paths','email_from_name','ingress_type','data_plane_port','image_ref','container_port','health_path']);
+  const ALLOWED_APP_COLS = new Set(['name','domain','description','category','source_type','github_url','branch','public_access','visibility','github_token_encrypted','resource_limits','runtime','image_retention','frame_ancestors','auth_mode','auth_bypass_paths','email_from_name','ingress_type','data_plane_port','image_ref','container_port','health_path','catalog_slug']);
   const invalidKey = Object.keys(updates).find(k => !ALLOWED_APP_COLS.has(k));
   if (invalidKey) throw new AppError(`Invalid field: ${invalidKey}`, 400, 'VALIDATION');
 

@@ -440,9 +440,9 @@ export function Catalog() {
   const sortAria = (key: SortKey): 'ascending' | 'descending' | 'none' =>
     sortKey === key ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'
 
-  const th = (key: SortKey, label: string, extra?: React.CSSProperties) => (
+  const th = (key: SortKey, label: string, extra?: React.CSSProperties, cls?: string) => (
     <th
-      className="th-sort"
+      className={cls ? `th-sort ${cls}` : 'th-sort'}
       style={extra}
       tabIndex={0}
       role="columnheader"
@@ -537,16 +537,16 @@ export function Catalog() {
       )}
 
       <div className="apps-table-wrap">
-        <table className="apps-table">
+        <table className="apps-table apps-table--actions">
           <thead>
             <tr>
               <th style={{ width: 28 }} aria-label="Expand" />
               {th('name', 'Application', { minWidth: 160 })}
               <th style={{ minWidth: 240 }}>What it does</th>
-              {th('category', 'Category', { minWidth: 110 })}
-              {th('stars', 'Stars', { minWidth: 80 })}
-              {th('pulls', 'Pulls', { minWidth: 90 })}
-              {th('size', 'Size', { minWidth: 80 })}
+              {th('category', 'Category', { minWidth: 110 }, 'col-mid')}
+              {th('stars', 'Stars', { minWidth: 80 }, 'col-lo')}
+              {th('pulls', 'Pulls', { minWidth: 90 }, 'col-lo')}
+              {th('size', 'Size', { minWidth: 80 }, 'col-lo')}
               <th style={{ minWidth: 190 }}>Version</th>
               <th style={{ minWidth: 150 }}>Status</th>
             </tr>
@@ -645,18 +645,18 @@ function CatalogRow({ entry, expanded, onToggle, canCreate, onInstall, onOpen }:
           <div style={{ fontSize: '.7rem', color: 'var(--dim)', fontFamily: 'monospace' }}>{entry.repo || '—'}</div>
         </td>
         <td style={{ color: 'var(--dim)' }}>{entry.short || <span title="No description in the manifest">—</span>}</td>
-        <td><span className="tag">{entry.category || 'Uncategorized'}</span></td>
-        <td style={{ whiteSpace: 'nowrap' }}>
+        <td className="col-mid"><span className="tag">{entry.category || 'Uncategorized'}</span></td>
+        <td className="col-lo" style={{ whiteSpace: 'nowrap' }}>
           {stars
             ? <span title={`${en?.stars?.toLocaleString()} GitHub stars`}>★ {stars}</span>
             : <span style={{ color: 'var(--dim)' }} title={absenceReason(en?.sources?.github, 'github')}>—</span>}
         </td>
-        <td style={{ whiteSpace: 'nowrap' }}>
+        <td className="col-lo" style={{ whiteSpace: 'nowrap' }}>
           {pulls
             ? <span title={`${en?.pulls?.toLocaleString()} Docker Hub pulls — CI runs and layer re-pulls count too, so read it as an order of magnitude`}>⇩ {pulls}</span>
             : <span style={{ color: 'var(--dim)' }} title={absenceReason(en?.sources?.image, 'image')}>—</span>}
         </td>
-        <td style={{ whiteSpace: 'nowrap' }}>
+        <td className="col-lo" style={{ whiteSpace: 'nowrap' }}>
           {size
             ? <span title={`${en?.image_size?.toLocaleString()} bytes compressed — the download, not the unpacked size on disk`}>{size}</span>
             : <span style={{ color: 'var(--dim)' }} title={absenceReason(en?.sources?.image, 'image')}>—</span>}
@@ -950,6 +950,12 @@ function InstallDialog({ entry, onClose, onCreated }: {
     blockers.push(`the host, database name, user and password of the ${need.label} you already run`)
   }
   if (need && dbMode === 'external' && !dbPortOk) blockers.push('a database port between 1 and 65535')
+  // A slug the server has already refused must not be submittable again.
+  // Without this the Deploy button stays live with a value known to be
+  // taken, and a user who does not notice the suggestion just below it
+  // re-sends the same doomed request — five 409s in a row, from five
+  // clicks, with the fix sitting one button away.
+  if (takenSlug && slug.trim() === takenSlug) blockers.push('a slug that is not already taken')
   if (source === 'image' && !effectiveTag) blockers.push('an image tag (":latest" is refused — see below)')
   if (source === 'github' && !repoUrl(entry.repo)) blockers.push('a resolvable GitHub repository in the manifest')
   if (routing === 'domain' && !domain.trim()) blockers.push('the custom domain')

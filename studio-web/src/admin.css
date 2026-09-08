@@ -645,6 +645,44 @@ textarea:focus { border-color: var(--accent); }
    admins can scan dozens of apps without scrolling through stacked
    cards. Inline-editable cells use the existing .editable styling. */
 .apps-table-wrap { overflow-x: auto; margin-bottom: 16px; }
+
+/* v2.65.1 RESPONSIVE TABLES.
+   The wrapper has always scrolled horizontally, and that was the bug rather
+   than the fix: on a narrow window the catalogue's Deploy button sat past the
+   right edge, reachable only by a horizontal scroll nothing hinted at, so the
+   page looked like it had no way to install anything.
+
+   Two mechanisms, both opt-in so a table whose last column is ordinary data is
+   untouched:
+
+   .apps-table--actions  pins the LAST column to the right edge, so the thing
+                         you act with is always on screen while the data scrolls
+                         under it. It needs an opaque background of its own -
+                         a sticky cell inheriting `transparent` shows the text
+                         it is sliding over.
+
+   .col-lo / .col-mid    mark columns by priority. Below 1100px the lowest
+                         priority ones are removed from the layout entirely
+                         rather than squeezed, because a 30px-wide column of
+                         truncated numbers helps nobody. display:none on a
+                         <col>-less table has to hit BOTH th and td. */
+.apps-table--actions th:last-child,
+.apps-table--actions td:last-child {
+  position: sticky; right: 0; z-index: 2;
+  background: var(--bg);
+  box-shadow: -8px 0 8px -8px rgba(0,0,0,.45);
+}
+.apps-table--actions thead th:last-child { background: var(--surface); z-index: 3; }
+.apps-table--actions tbody tr:hover td:last-child { background: var(--surface); }
+.apps-table--actions tbody tr.apps-row-selected > td:last-child { background: #1e2a3d; }
+
+@media (max-width: 1100px) {
+  .apps-table .col-lo { display: none; }
+}
+@media (max-width: 860px) {
+  .apps-table .col-mid { display: none; }
+  .apps-table th, .apps-table td { padding: 6px 6px; }
+}
 .apps-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
 .apps-table th, .apps-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
 .apps-table thead th { background: var(--surface); font-weight: 600; font-size: .76rem; color: var(--dim); text-transform: uppercase; letter-spacing: .4px; white-space: nowrap; position: sticky; top: 0; z-index: 1; }
