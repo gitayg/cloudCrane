@@ -2,7 +2,7 @@
   "name": "AppCrane",
   "description": "Self-service app hosting and deployment.",
   "license": "AGPL-3.0-only",
-  "version": "0.65.2",
+  "version": "0.65.3",
   "be": {
     "entry": "node server/index.js",
     "health": "/api/info"

@@ -316,6 +316,19 @@ export function Layout({ children, subItems, activeSub }: Props) {
   }, [notifLoaded, loadNotifs])
 
   // v2.13.0: load the accessible app list for the nav "Apps" section.
+  //
+  // v2.65.3: re-fetched on navigation, not once on mount. It used to run with an
+  // empty dependency list and setNavApps was called from nowhere else, so the
+  // sidebar was a snapshot of the moment the page loaded: install an app and it
+  // did not appear, delete one and it stayed. That is worse than cosmetic —
+  // an app missing from this list is one you cannot open or delete from the UI,
+  // while it still holds its slug, so re-installing it answers 409 and the only
+  // visible symptom is a name that is somehow taken by nothing.
+  //
+  // Keyed on pathname because every path that creates or deletes an app
+  // navigates afterwards. GET /api/apps does one cached `docker ps` for the
+  // whole list (v2.45.3), not one per app, so this is a cheap request rather
+  // than a poll.
   useEffect(() => {
     adminApi.get<{ apps: NavApp[] }>('/api/apps')
       // v2.21.30: keep hidden apps in the list; appGroups filters them out for
@@ -323,7 +336,7 @@ export function Layout({ children, subItems, activeSub }: Props) {
       // avoiding a fetch-vs-role race). Platform admins see hidden apps + a badge.
       .then(r => setNavApps((r?.apps || []).filter(a => a.app_role !== 'none')))
       .catch(() => setNavApps([]))
-  }, [])
+  }, [location.pathname])
 
   // v2.13.0: post-login AppCrane What's New for platform admins. Checked once
   // per browser session; the server records "seen" on dismiss so it won't

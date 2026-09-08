@@ -1024,7 +1024,28 @@ function InstallDialog({ entry, onClose, onCreated }: {
     }
 
     if (res.status === 409) {
-      setTakenSlug(slug)
+      // A 409 is NOT always a slug clash. POST /api/apps raises one for a real
+      // duplicate slug (code DUPLICATE, apps.js:596) and ANOTHER for any
+      // validation error whose message contains "already used" — a custom
+      // domain held by another app, a public port already claimed
+      // (apps.js:1478, code VALIDATION).
+      //
+      // This branch used to assume the first, show "the slug is already taken",
+      // and offer the next number. When the conflict was the second kind that
+      // advice was not merely useless, it was misdirection: a user increments
+      // name-2, name-3 ... name-7, each one refused for a reason the dialog
+      // never showed them, while the real conflict sits untouched. Read what the
+      // server actually said.
+      const payload = await res.json().catch(() => ({}))
+      const err = (payload as { error?: { code?: string; message?: string } })?.error
+      if (err?.code === 'DUPLICATE') {
+        setTakenSlug(slug)
+      } else {
+        setError(
+          (err?.message || 'The server refused this as a conflict but gave no detail.')
+          + ' — this is a conflict, but not with the slug, so renaming the app will not help.',
+        )
+      }
       setSubmitting(false)
       return
     }
